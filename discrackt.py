@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 from urllib.request import urlopen, Request
 from pypresence import Presence
-from datetime import datetime
 import dateutil.parser as dp
 import time
 import json
 import credentials
 import signal
 
+start = time.time()
 headers = {
     "Content-Type": "application/json",
     "trakt-api-version": "2",
@@ -63,8 +63,7 @@ def parseData(data):
     endTime = dp.parse(data["expires_at"])
     endTimestamp = endTime.timestamp()
     watchPercentage = "{:.2%}".format(
-        (datetime.now(startTime.tzinfo) - startTime).total_seconds()
-        / (endTime - startTime).total_seconds()
+        (time.time() - startTimestamp) / (endTimestamp - startTimestamp)
     )
     print("{} watched".format(watchPercentage))
     RPC.update(
@@ -89,11 +88,11 @@ while True:
         )
         response_body = urlopen(request).read()
     except:
-        print("Error trying to process API request")
+        print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Trakt Connection Failure")
     try:
         parseData(json.loads(response_body))
 
     except:
-        print("Nothing is being played")
+        print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Nothing is being played")
         RPC.clear()
     time.sleep(15)
