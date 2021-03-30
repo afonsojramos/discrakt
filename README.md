@@ -15,10 +15,10 @@ After this, just install the dependencies using `pip install -r requirements.txt
 
 # Running
 
-You can run this script with: `python disakt.py`
+You can run this script with: `python discrakt.py`
 
 In the future, I will provide either a guide or an executable to run this service on boot for both Windows and Linux.
 
 #### Thank You
 
-* Icons by [iconixar](https://www.flaticon.com/authors/iconixar)
+Icons by [iconixar](https://www.flaticon.com/authors/iconixar)
