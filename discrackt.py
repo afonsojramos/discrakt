@@ -6,12 +6,36 @@ import dateutil.parser as dp
 import time
 import json
 import credentials
+import signal
 
 headers = {
     "Content-Type": "application/json",
     "trakt-api-version": "2",
     "trakt-api-key": credentials.traktClientID,
 }
+
+
+def signal_handler(sig, frame):
+    runtime = round((time.time() - start))
+
+    print(runtime < 60)
+    print(
+        time.strftime("%Y-%m-%dT%H:%M:%S"),
+        ": Ctrl+C pressed\n\nExiting after",
+        "{} seconds".format(runtime)
+        if runtime < 60
+        else "{} minutes".format(round(runtime / 60))
+        if runtime / 60 < 60
+        else "{} hours".format(round(runtime / 3600)),
+    )
+    try:
+        rpc_obj.close()
+    except:
+        pass
+    exit(0)
+
+
+signal.signal(signal.SIGINT, signal_handler)
 
 RPC = Presence(credentials.discordClientID)
 RPC.connect()
