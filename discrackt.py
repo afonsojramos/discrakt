@@ -51,14 +51,24 @@ def parseData(data):
     startTimestamp = startTime.astimezone(timezone).timestamp()
     endTime = dp.parse(data["expires_at"])
     endTimestamp = endTime.astimezone(timezone).timestamp()
-    watchPercentage = "{:.2%}".format((datetime.now(startTime.tzinfo) - startTime).total_seconds() / (endTime - startTime).total_seconds())
+    watchPercentage = "{:.2%}".format(
+        (datetime.now(startTime.tzinfo) - startTime).total_seconds()
+        / (endTime - startTime).total_seconds()
+    )
     print("{} watched".format(watchPercentage))
     updateRPC(newState, newDetails, startTimestamp, endTimestamp, media)
 
 
 while True:
     try:
-        request = Request(("https://api.trakt.tv/users/{}/watching".format(credentials.traktUsername)), headers=headers)
+        request = Request(
+            (
+                "https://api.trakt.tv/users/{}/watching".format(
+                    credentials.traktUsername
+                )
+            ),
+            headers=headers,
+        )
         response_body = urlopen(request).read()
     except:
         print("Error trying to process API request")
