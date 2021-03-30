@@ -1,6 +1,7 @@
 # Disakt
 A simple python script that acts as a bridge between [Discord](https://discord.com/) and [Trakt](https://trakt.tv), allowing for the display of the watch status as [Discord's Rich Presence](https://discord.com/rich-presence).
 
+
 # Setup
 
 1. Create an API Application on [Trakt.tv](https://trakt.tv/oauth/applications/new) and an Application on [Discord](https://discord.com/developers/applications).
