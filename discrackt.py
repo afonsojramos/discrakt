@@ -47,7 +47,11 @@ def parseData(data):
         print("TV Show name:", data["show"]["title"])
         print("IMDB ID:", data["show"]["ids"]["imdb"])
         newDetails = data["show"]["title"]
-        newState = data["episode"]["title"]
+        newState = "S{}E{}: {}".format(
+            data["episode"]["season"],
+            data["episode"]["number"],
+            data["episode"]["title"],
+        )
         media = "tv"
     elif data["type"] == "movie":
         print("Movie name:", data["movie"]["title"])
