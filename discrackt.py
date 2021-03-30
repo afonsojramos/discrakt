@@ -29,7 +29,7 @@ def parseData(data):
         print("Movie name:", data["movie"]["title"])
         print("IMDB ID:", data["movie"]["ids"]["imdb"])
         newDetails = data["movie"]["title"]
-        newState = "https://www.imdb.com/title/" + data["movie"]["ids"]["imdb"]
+        newState = data["movie"]["year"]
         media = "movie"
     else:
         print("Media Error: What are you even watching?")
