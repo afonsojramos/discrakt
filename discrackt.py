@@ -13,6 +13,8 @@ headers = {
     "trakt-api-version": "2",
     "trakt-api-key": credentials.traktClientID,
 }
+RPC = Presence(credentials.discordClientID)
+RPC.connect()
 
 
 def signal_handler(sig, frame):
@@ -29,16 +31,13 @@ def signal_handler(sig, frame):
         else "{} hours".format(round(runtime / 3600)),
     )
     try:
-        rpc_obj.close()
+        RPC.close()
     except:
         pass
     exit(0)
 
 
 signal.signal(signal.SIGINT, signal_handler)
-
-RPC = Presence(credentials.discordClientID)
-RPC.connect()
 
 
 def parseData(data):
