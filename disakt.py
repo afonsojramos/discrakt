@@ -51,8 +51,8 @@ def parseData(data):
     startTimestamp = startTime.astimezone(timezone).timestamp()
     endTime = dp.parse(data["expires_at"])
     endTimestamp = endTime.astimezone(timezone).timestamp()
-    watchPercentage = "{:.2%}".format((datetime.now(startTime.tzinfo) - startTime).total_seconds() / (endTime - startTime).total_seconds() * 100)
-    print(watchPercentage)
+    watchPercentage = "{:.2%}".format((datetime.now(startTime.tzinfo) - startTime).total_seconds() / (endTime - startTime).total_seconds())
+    print("{} watched".format(watchPercentage))
     updateRPC(newState, newDetails, startTimestamp, endTimestamp, media)
 
 
