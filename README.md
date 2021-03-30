@@ -20,6 +20,7 @@ After this, just install the dependencies using `pip install -r requirements.txt
 You can run this script with: `python discrakt.py`
 
 When a show is detected a similar output is expected:
+
 ![Console](./images/demo/console.png)
 
 In the future, I will provide either a guide or an executable to run this service on boot for both Windows and Linux.
