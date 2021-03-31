@@ -104,6 +104,7 @@ while True:
 
     if not is_json(response_body):
         print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Nothing is being played")
+        RPC.clear()
     else:
         parseData(json.loads(response_body))
 
