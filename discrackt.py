@@ -73,15 +73,19 @@ def parseData(data):
     watchPercentage = "{:.2%}".format(
         (time.time() - startTimestamp) / (endTimestamp - startTimestamp)
     )
-    print("{} watched".format(watchPercentage))
-    RPC.update(
-        state=newState,
-        details=newDetails,
-        start=startTimestamp,
-        end=endTimestamp,
-        large_image=media,
-        small_image="trakt",
-    )
+    print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": {} watched".format(watchPercentage))
+    try:
+        RPC.update(
+            state=newState,
+            details=newDetails,
+            start=startTimestamp,
+            end=endTimestamp,
+            large_image=media,
+            small_image="trakt",
+        )
+    except:
+        print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Discord Connection Failure")
+        raise SystemExit
 
 
 while True:
