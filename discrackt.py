@@ -32,7 +32,7 @@ def signal_handler(sig, frame):
     )
     try:
         RPC.close()
-    except:
+    except ConnectionResetError:
         pass
     raise SystemExit
 
@@ -42,8 +42,8 @@ signal.signal(signal.SIGINT, signal_handler)
 
 def is_json(myjson):
     try:
-        json_object = json.loads(myjson)
-    except ValueError as e:
+        json.loads(myjson)
+    except ValueError:
         return False
     return True
 
@@ -83,7 +83,7 @@ def parseData(data):
             large_image=media,
             small_image="trakt",
         )
-    except:
+    except ConnectionRefusedError:
         print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Discord Connection Failure")
         raise SystemExit
 
@@ -99,7 +99,7 @@ while True:
             headers=headers,
         )
         response_body = urlopen(request).read()
-    except:
+    except ConnectionRefusedError:
         print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Trakt Connection Failure")
 
     if not is_json(response_body):
