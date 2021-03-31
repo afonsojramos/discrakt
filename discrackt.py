@@ -56,7 +56,7 @@ def parseData(data):
             data["episode"]["number"],
             data["episode"]["title"],
         )
-        print("TV Show: {} - {}".format(newDetails, newState))
+        print("TV Show: {}\nEpisode: {}".format(newDetails, newState))
         media = "tv"
     elif data["type"] == "movie":
         newDetails = data["movie"]["title"]
