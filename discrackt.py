@@ -34,7 +34,7 @@ def signal_handler(sig, frame):
         RPC.close()
     except:
         pass
-    exit(0)
+    raise SystemExit
 
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -42,21 +42,18 @@ signal.signal(signal.SIGINT, signal_handler)
 
 def parseData(data):
     if data["type"] == "episode":
-        print("Episode title:", data["episode"]["title"])
-        print("TV Show name:", data["show"]["title"])
-        print("IMDB ID:", data["show"]["ids"]["imdb"])
         newDetails = data["show"]["title"]
-        newState = "S{}E{}: {}".format(
+        newState = "S{}E{} - {}".format(
             data["episode"]["season"],
             data["episode"]["number"],
             data["episode"]["title"],
         )
+        print("TV Show: {} - {}".format(newDetails, newState))
         media = "tv"
     elif data["type"] == "movie":
-        print("Movie name:", data["movie"]["title"])
-        print("IMDB ID:", data["movie"]["ids"]["imdb"])
         newDetails = data["movie"]["title"]
         newState = data["movie"]["year"]
+        print("Movie: {} ({})".format(newDetails, newState))
         media = "movie"
     else:
         print("Media Error: What are you even watching?")
