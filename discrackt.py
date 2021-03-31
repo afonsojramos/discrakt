@@ -40,6 +40,14 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 
+def is_json(myjson):
+    try:
+        json_object = json.loads(myjson)
+    except ValueError as e:
+        return False
+    return True
+
+
 def parseData(data):
     if data["type"] == "episode":
         newDetails = data["show"]["title"]
@@ -89,10 +97,10 @@ while True:
         response_body = urlopen(request).read()
     except:
         print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Trakt Connection Failure")
-    try:
+
+    if not is_json(response_body):
+        print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Nothing is being played")
+    else:
         parseData(json.loads(response_body))
 
-    except:
-        print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Nothing is being played")
-        RPC.clear()
     time.sleep(15)
