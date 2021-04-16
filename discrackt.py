@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from urllib.request import urlopen, Request
-from pypresence import Presence
+from pypresence import Presence, InvalidID, InvalidPipe
 import dateutil.parser as dp
 import time
 import json
@@ -23,15 +23,13 @@ def connect_discord():
             RPC.connect()
             print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Discord Connection Successful")
             break
-        except:
+        except (InvalidID, InvalidPipe):
             print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Discord Connection Failure")
             time.sleep(15)
 
 
 def signal_handler(sig, frame):
     runtime = round((time.time() - start))
-
-    print(runtime < 60)
     print(
         time.strftime("%Y-%m-%dT%H:%M:%S"),
         ": Ctrl+C pressed\n\nExiting after",
@@ -41,6 +39,7 @@ def signal_handler(sig, frame):
         if runtime / 60 < 60
         else "{} hours".format(round(runtime / 3600)),
     )
+
     try:
         RPC.close()
     except ConnectionResetError:
@@ -94,7 +93,7 @@ def parseData(data):
             large_image=media,
             small_image="trakt",
         )
-    except ConnectionRefusedError:
+    except (ConnectionRefusedError, InvalidID, InvalidPipe):
         connect_discord()
 
 
@@ -114,7 +113,7 @@ while True:
         print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Nothing is being played")
         try:
             RPC.clear()
-        except:
+        except (InvalidID, InvalidPipe):
             connect_discord()
     else:
         parseData(json.loads(trakt_data))
