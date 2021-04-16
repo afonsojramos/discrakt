@@ -105,17 +105,18 @@ while True:
             "https://api.trakt.tv/users/{}/watching".format(credentials.traktUser),
             headers=headers,
         )
-        response_body = urlopen(request).read()
+        with urlopen(request) as response:
+            trakt_data = response.read()
     except ConnectionRefusedError:
         print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Trakt Connection Failure")
 
-    if not is_json(response_body):
+    if not is_json(trakt_data):
         print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Nothing is being played")
         try:
             RPC.clear()
         except:
             connect_discord()
     else:
-        parseData(json.loads(response_body))
+        parseData(json.loads(trakt_data))
 
     time.sleep(15)
