@@ -14,7 +14,18 @@ headers = {
     "trakt-api-key": credentials.traktClientID,
 }
 RPC = Presence(credentials.discordClientID)
-RPC.connect()
+
+
+def connect_discord():
+    while True:
+        try:
+            print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Attempting Discord Connection")
+            RPC.connect()
+            print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Discord Connection Successful")
+            break
+        except:
+            print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Discord Connection Failure")
+            time.sleep(15)
 
 
 def signal_handler(sig, frame):
@@ -56,15 +67,15 @@ def parseData(data):
             data["episode"]["number"],
             data["episode"]["title"],
         )
-        print("TV Show: {}\nEpisode: {}".format(newDetails, newState))
+        print("TV Show : {}\nEpisode : {}".format(newDetails, newState))
         media = "tv"
     elif data["type"] == "movie":
         newDetails = data["movie"]["title"]
         newState = data["movie"]["year"]
-        print("Movie: {} ({})".format(newDetails, newState))
+        print("Movie : {} ({})".format(newDetails, newState))
         media = "movie"
     else:
-        print("Media Error: What are you even watching?")
+        print("Media Error : What are you even watching?")
 
     startTime = dp.parse(data["started_at"])
     startTimestamp = startTime.timestamp()
@@ -84,18 +95,14 @@ def parseData(data):
             small_image="trakt",
         )
     except ConnectionRefusedError:
-        print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Discord Connection Failure")
-        raise SystemExit
+        connect_discord()
 
 
+connect_discord()
 while True:
     try:
         request = Request(
-            (
-                "https://api.trakt.tv/users/{}/watching".format(
-                    credentials.traktUsername
-                )
-            ),
+            "https://api.trakt.tv/users/{}/watching".format(credentials.traktUser),
             headers=headers,
         )
         response_body = urlopen(request).read()
@@ -104,7 +111,10 @@ while True:
 
     if not is_json(response_body):
         print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Nothing is being played")
-        RPC.clear()
+        try:
+            RPC.clear()
+        except:
+            connect_discord()
     else:
         parseData(json.loads(response_body))
 

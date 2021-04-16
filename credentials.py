@@ -1,6 +1,6 @@
 # Trakt API
 traktClientID = ""
-traktUsername = ""
+traktUser = ""
 
 # Discord Application
 discordClientID = ""
