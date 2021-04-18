@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from urllib.request import urlopen, Request
-from pypresence import Presence, InvalidID, InvalidPipe
+from pypresence import Presence
 import dateutil.parser as dp
 import time
 import json
@@ -19,11 +19,10 @@ RPC = Presence(credentials.discordClientID)
 def connect_discord():
     while True:
         try:
-            print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Attempting Discord Connection")
             RPC.connect()
             print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Discord Connection Successful")
             break
-        except (InvalidID, InvalidPipe):
+        except Exception:
             print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Discord Connection Failure")
             time.sleep(15)
 
@@ -93,12 +92,13 @@ def parseData(data):
             large_image=media,
             small_image="trakt",
         )
-    except (ConnectionRefusedError, InvalidID, InvalidPipe):
+    except Exception:
         connect_discord()
 
 
 connect_discord()
 while True:
+    time.sleep(15)
     try:
         request = Request(
             "https://api.trakt.tv/users/{}/watching".format(credentials.traktUser),
@@ -106,16 +106,15 @@ while True:
         )
         with urlopen(request) as response:
             trakt_data = response.read()
-    except ConnectionRefusedError:
+    except Exception:
         print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Trakt Connection Failure")
+        continue
 
     if not is_json(trakt_data):
         print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Nothing is being played")
         try:
             RPC.clear()
-        except (InvalidID, InvalidPipe):
+        except Exception:
             connect_discord()
     else:
         parseData(json.loads(trakt_data))
-
-    time.sleep(15)
