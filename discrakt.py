@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-from urllib.request import urlopen, Request
-from pypresence import Presence
-import dateutil.parser as dp
-import time
+import configparser
 import json
-import credentials
 import signal
+import time
+from urllib.request import Request, urlopen
+
+import dateutil.parser as dp
+from pypresence import Presence
+
 
 start = time.time()
+config = configparser.ConfigParser()
+config.read("credentials.ini")
 headers = {
     "Content-Type": "application/json",
     "trakt-api-version": "2",
-    "trakt-api-key": credentials.traktClientID,
+    "trakt-api-key": config["Trakt API"]["traktClientID"],
 }
-RPC = Presence(credentials.discordClientID)
+RPC = Presence(config["Discord Application"]["discordClientID"])
 
 
 def connect_discord():
@@ -43,6 +47,7 @@ def signal_handler(sig, frame):
         RPC.close()
     except ConnectionResetError:
         pass
+    time.sleep(2)
     raise SystemExit
 
 
@@ -101,7 +106,9 @@ while True:
     time.sleep(15)
     try:
         request = Request(
-            "https://api.trakt.tv/users/{}/watching".format(credentials.traktUser),
+            "https://api.trakt.tv/users/{}/watching".format(
+                config["Trakt API"]["traktUser"]
+            ),
             headers=headers,
         )
         with urlopen(request) as response:
