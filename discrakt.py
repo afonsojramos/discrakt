@@ -8,16 +8,29 @@ from urllib.request import Request, urlopen
 import dateutil.parser as dp
 from pypresence import Presence
 
-
 start = time.time()
 config = configparser.ConfigParser()
 config.read("credentials.ini")
+try:
+    traktClientID = config["Trakt API"]["traktClientID"]
+    traktUser = config["Trakt API"]["traktUser"]
+    discordClientID = config["Discord Application"]["discordClientID"]
+
+    if not traktClientID or not traktUser or not discordClientID:
+        logging.error("Undefined Credentials")
+        time.sleep(2)
+        raise SystemExit
+except Exception:
+    logging.error("Missing Credentials")
+    time.sleep(2)
+    raise SystemExit
+
 headers = {
     "Content-Type": "application/json",
     "trakt-api-version": "2",
-    "trakt-api-key": config["Trakt API"]["traktClientID"],
+    "trakt-api-key": traktClientID,
 }
-RPC = Presence(config["Discord Application"]["discordClientID"])
+RPC = Presence(discordClientID)
 
 
 def connect_discord():
@@ -106,9 +119,7 @@ while True:
     time.sleep(15)
     try:
         request = Request(
-            "https://api.trakt.tv/users/{}/watching".format(
-                config["Trakt API"]["traktUser"]
-            ),
+            "https://api.trakt.tv/users/{}/watching".format(traktUser),
             headers=headers,
         )
         with urlopen(request) as response:
