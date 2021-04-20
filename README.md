@@ -1,4 +1,7 @@
 # Discrakt
+
+![Discrakt](./images/demo/discrakt.png)
+
 A simple python script that acts as a bridge between [Discord](https://discord.com/) and [Trakt](https://trakt.tv), allowing for the display of the watch status as [Discord's Rich Presence](https://discord.com/rich-presence).
 
 ![User Status](./images/demo/member-list.png)
@@ -17,9 +20,9 @@ As usual, it is recommended to use [venv](https://docs.python.org/3/library/venv
 
 After this, just install the dependencies using `pip install -r requirements.txt`.
 
-## Running
+## Running from script
 
-You can run this script with: `python discrakt.py`
+After the setting things up by following the [install section](#Install), you can run this script with: `python discrakt.py`
 
 When a show is detected a similar output is expected:
 
