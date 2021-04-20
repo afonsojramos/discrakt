@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import configparser
 import json
+import logging
 import signal
 import time
 from urllib.request import Request, urlopen
@@ -11,6 +12,14 @@ from pypresence import Presence
 start = time.time()
 config = configparser.ConfigParser()
 config.read("credentials.ini")
+logging.basicConfig(
+    filename="discrakt.log",
+    encoding="utf-8",
+    level=logging.INFO,
+    format="%(levelname)s : %(asctime)s : %(message)s",
+    datefmt="%m/%d/%Y %I:%M:%S %p",
+)
+
 try:
     traktClientID = config["Trakt API"]["traktClientID"]
     traktUser = config["Trakt API"]["traktUser"]
@@ -37,24 +46,24 @@ def connect_discord():
     while True:
         try:
             RPC.connect()
-            print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Discord Connection Successful")
+            logging.info("Discord Connection Successful")
             break
         except Exception:
-            print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Discord Connection Failure")
+            logging.warning("Discord Connection Failure")
             time.sleep(15)
 
 
 def signal_handler(sig, frame):
     runtime = round((time.time() - start))
-    print(
-        time.strftime("%Y-%m-%dT%H:%M:%S"),
-        ": Ctrl+C pressed\n\nExiting after",
-        "{} seconds".format(runtime)
+    exitMessage = (
+        "Ctrl+C pressed!! Exiting after {} seconds.".format(runtime)
         if runtime < 60
         else "{} minutes".format(round(runtime / 60))
         if runtime / 60 < 60
-        else "{} hours".format(round(runtime / 3600)),
+        else "{} hours".format(round(runtime / 3600))
     )
+    print(exitMessage)
+    logging.info(exitMessage)
 
     try:
         RPC.close()
@@ -83,15 +92,15 @@ def parseData(data):
             data["episode"]["number"],
             data["episode"]["title"],
         )
-        print("TV Show : {}\nEpisode : {}".format(newDetails, newState))
+        logging.info("TV Show : {}\nEpisode : {}".format(newDetails, newState))
         media = "tv"
     elif data["type"] == "movie":
         newDetails = data["movie"]["title"]
         newState = data["movie"]["year"]
-        print("Movie : {} ({})".format(newDetails, newState))
+        logging.info("Movie : {} ({})".format(newDetails, newState))
         media = "movie"
     else:
-        print("Media Error : What are you even watching?")
+        logging.warning("Media Error : What are you even watching?")
 
     startTime = dp.parse(data["started_at"])
     startTimestamp = startTime.timestamp()
@@ -100,7 +109,7 @@ def parseData(data):
     watchPercentage = "{:.2%}".format(
         (time.time() - startTimestamp) / (endTimestamp - startTimestamp)
     )
-    print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": {} watched".format(watchPercentage))
+    logging.info("{} watched".format(watchPercentage))
     try:
         RPC.update(
             state=newState,
@@ -125,11 +134,11 @@ while True:
         with urlopen(request) as response:
             trakt_data = response.read()
     except Exception:
-        print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Trakt Connection Failure")
+        logging.warning("Trakt Connection Failure")
         continue
 
     if not is_json(trakt_data):
-        print(time.strftime("%Y-%m-%dT%H:%M:%S"), ": Nothing is being played")
+        logging.info("Nothing is being played")
         try:
             RPC.clear()
         except Exception:
