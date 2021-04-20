@@ -14,6 +14,7 @@ config = configparser.ConfigParser()
 config.read("credentials.ini")
 logging.basicConfig(
     filename="discrakt.log",
+    filemode="w",
     encoding="utf-8",
     level=logging.INFO,
     format="%(levelname)s : %(asctime)s : %(message)s",
