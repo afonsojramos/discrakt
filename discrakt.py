@@ -56,15 +56,16 @@ def connect_discord():
 
 def signal_handler(sig, frame):
     runtime = round((time.time() - start))
-    exitMessage = (
-        "Ctrl+C pressed!! Exiting after {} seconds.".format(runtime)
+    timeOpen = (
+        "{} seconds.".format(runtime)
         if runtime < 60
-        else "{} minutes".format(round(runtime / 60))
+        else "{} minutes.".format(round(runtime / 60))
         if runtime / 60 < 60
-        else "{} hours".format(round(runtime / 3600))
+        else "{} hours.".format(round(runtime / 3600))
     )
-    print(exitMessage)
-    logging.info(exitMessage)
+
+    print("Ctrl+C pressed!! Exiting after " + timeOpen)
+    logging.info("Ctrl+C pressed!! Exiting after " + timeOpen)
 
     try:
         RPC.close()
@@ -86,23 +87,6 @@ def is_json(myjson):
 
 
 def parseData(data):
-    if data["type"] == "episode":
-        newDetails = data["show"]["title"]
-        newState = "S{}E{} - {}".format(
-            data["episode"]["season"],
-            data["episode"]["number"],
-            data["episode"]["title"],
-        )
-        logging.info("TV Show : {}\nEpisode : {}".format(newDetails, newState))
-        media = "tv"
-    elif data["type"] == "movie":
-        newDetails = data["movie"]["title"]
-        newState = data["movie"]["year"]
-        logging.info("Movie : {} ({})".format(newDetails, newState))
-        media = "movie"
-    else:
-        logging.warning("Media Error : What are you even watching?")
-
     startTime = dp.parse(data["started_at"])
     startTimestamp = startTime.timestamp()
     endTime = dp.parse(data["expires_at"])
@@ -110,7 +94,28 @@ def parseData(data):
     watchPercentage = "{:.2%}".format(
         (time.time() - startTimestamp) / (endTimestamp - startTimestamp)
     )
-    logging.info("{} watched".format(watchPercentage))
+
+    if data["type"] == "episode":
+        newDetails = data["show"]["title"]
+        newState = "S{}E{} - {}".format(
+            data["episode"]["season"],
+            data["episode"]["number"],
+            data["episode"]["title"],
+        )
+        logging.info(
+            "TV Show : {} > {} [{}]".format(newDetails, newState, watchPercentage)
+        )
+        media = "tv"
+    elif data["type"] == "movie":
+        newDetails = data["movie"]["title"]
+        newState = data["movie"]["year"]
+        logging.info(
+            "Movie : {} ({}) [{}]".format(newDetails, newState, watchPercentage)
+        )
+        media = "movie"
+    else:
+        logging.warning("Media Error : What are you even watching?")
+
     try:
         RPC.update(
             state=newState,
@@ -139,7 +144,7 @@ while True:
         continue
 
     if not is_json(trakt_data):
-        logging.info("Nothing is being played")
+        logging.debug("Nothing is being played")
         try:
             RPC.clear()
         except Exception:
