@@ -69,9 +69,8 @@ def signal_handler(sig, frame):
 
     try:
         RPC.close()
-    except ConnectionResetError:
+    except (ConnectionResetError, AssertionError):
         pass
-    time.sleep(2)
     raise SystemExit
 
 
