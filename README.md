@@ -17,17 +17,21 @@ A simple python script that acts as a bridge between [Discord](https://discord.c
 
 *P.S.* Discord needs to be running on the machine Discrakt is running on. 
 
-## Install
+## Running executables
 
-As usual, it is recommended to use [venv](https://docs.python.org/3/library/venv.html) and [Python 3](https://www.python.org/). 
+Running the executables is as easy as clicking the provided executables in the latest [release](https://github.com/afonsojramos/discrakt/releases) (`.exe` for Windows and `.sh` for UNIX systems). That's it!
 
-After this, just install the dependencies using `pip install -r requirements.txt`.
+## Development
 
-## Running from script
+As usual, it is recommended to use [venv](https://docs.python.org/3/library/venv.html) and [Python 3.9](https://www.python.org/). 
 
-After the setting things up by following the [install section](#Install), you can run this script with: `python discrakt.py`
+After this, simply install the dependencies using `pip install -r requirements.txt`.
 
-When a show is detected a similar output is expected:
+### Running from script
+
+After setting things up by following the previous section, you can run this script with: `python discrakt.py`
+
+When a show is detected throught the Trakt API, a similar output is expected in the logs:
 
 ![Console](./images/demo/console.png)
 
