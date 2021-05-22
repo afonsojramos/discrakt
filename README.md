@@ -17,13 +17,13 @@ A simple python script that acts as a bridge between [Discord](https://discord.c
 
 *P.S.* Discord needs to be running on the machine Discrakt is running on. 
 
-#### Optional:
-
-Set the script/executable to run at startup so you don't have to worry about it again ([Windows](https://support.microsoft.com/en-us/windows/add-an-app-to-run-automatically-at-startup-in-windows-10-150da165-dcd9-7230-517b-cf3c295d89dd)/[Unix](https://raspberrypi.stackexchange.com/questions/15475/run-bash-script-on-startup))!
-
 ## Running executables
 
 Running the executables is as easy as clicking the provided executables in the latest [release](https://github.com/afonsojramos/discrakt/releases) (`.exe` for Windows and `.sh` for UNIX systems). That's it!
+
+#### Optional:
+
+Set the script/executable to run at startup so you don't have to worry about it again ([Windows](https://support.microsoft.com/en-us/windows/add-an-app-to-run-automatically-at-startup-in-windows-10-150da165-dcd9-7230-517b-cf3c295d89dd)/[Unix](https://raspberrypi.stackexchange.com/questions/15475/run-bash-script-on-startup))!
 
 ## Development
 
@@ -38,8 +38,6 @@ After setting things up by following the previous section, you can run this scri
 When a show is detected throught the Trakt API, a similar output is expected in the logs:
 
 ![Console](./images/demo/console.png)
-
-In the future, I will provide either a guide or an executable to run this service on boot for both Windows and Linux.
 
 ## Thank You
 
