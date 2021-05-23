@@ -2,7 +2,7 @@
 
 ![Discrakt](./images/demo/discrakt.png)
 
-A simple python script that acts as a bridge between [Discord](https://discord.com/) and [Trakt](https://trakt.tv), allowing for the display of the watch status as [Discord's Rich Presence](https://discord.com/rich-presence).
+A simple python script that acts as a bridge between [Discord](https://discord.com/) and [Trakt](https://trakt.tv), allowing for the display of the watch status as [Discord's Rich Presence](https://discord.com/rich-presence). Essentially, it's a Trakt Discord rich presence. 
 
 ![User Status](./images/demo/member-list.png)
 
