@@ -1,4 +1,4 @@
-# Discrakt
+# Discrakt - Easy to Use Trakt Discord Rich Presence
 
 ![Discrakt](./images/demo/discrakt.png)
 
