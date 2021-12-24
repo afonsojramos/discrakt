@@ -1,12 +1,14 @@
-# Discrakt - Easy to Use Trakt Discord Rich Presence
+# Discrakt - Easy to Use Trakt/Plex Discord Rich Presence
 
-![Discrakt](./images/demo/discrakt.png)
+<p align="center"><img src="./images/demo/discrakt.png" width="700px"><p>
 
-A simple python script that acts as a bridge between [Discord](https://discord.com/) and [Trakt](https://trakt.tv), allowing for the display of the watch status as [Discord's Rich Presence](https://discord.com/rich-presence). Essentially, it's a Trakt Discord rich presence. 
+A simple python script that acts as a bridge between [Discord](https://discord.com/) and [Trakt](https://trakt.tv) and [Plex](https://www.plex.tv/), allowing for the display of the watch status as [Discord's Rich Presence](https://discord.com/rich-presence). Essentially, it's a Trakt/Plex Discord Rich Presence. 
 
-![User Status](./images/demo/member-list.png)
+<p align="center"><img src="./images/demo/member-list.png" width="170px"><p>
 
-![Rich Presence](./images/demo/profile-status.png)
+<p align="center"><img src="./images/demo/profile-status.png" width="170px"><p>
+
+**Disclaimer**: If you are looking for simply connecting Plex and Discord, you are probably better off using either of these ([discord-rich-presence-plex](https://github.com/Phineas05/discord-rich-presence-plex) or [plex-rich-presence](https://github.com/Ombrelin/plex-rich-presence)). However, if you already know **Trakt** and how awesome it is this is definitely the best option, as it works more reliably and with some extra benefits over the other implementations, such as registering your watch status wherever you are watching (TV, phone, across the world, etc.), as long as you have **Discrakt** running and Discord open as well!
 
 ## Setup
 
@@ -37,7 +39,7 @@ After setting things up by following the previous section, you can run this scri
 
 When a show is detected throught the Trakt API, a similar output is expected in the logs:
 
-![Console](./images/demo/console.png)
+<p align="center"><img src="./images/demo/console.png"><p>
 
 ## Thank You
 
