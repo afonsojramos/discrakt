@@ -1,6 +1,6 @@
-pyinstaller==4.3
-pyinstaller-hooks-contrib==2021.1
-pypresence==4.2.0
-python-dateutil==2.8.1
+pyinstaller==4.7
+pyinstaller-hooks-contrib==2021.4
+pypresence==4.2.1
+python-dateutil==2.8.2
 #pywin32==300
 #pywin32-ctypes==0.2.0
