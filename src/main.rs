@@ -1,0 +1,33 @@
+use discord_rich_presence::DiscordIpc;
+use discrakt::{
+    config::load_config,
+    discord,
+    trakt::{self, TraktBodyResponse},
+};
+use std::{
+    thread::{self, sleep},
+    time::Duration,
+};
+use ureq::{Agent, AgentBuilder};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cfg = load_config();
+    let mut discord_client = discord::new(cfg.discord_token)?;
+    let agent: Agent = AgentBuilder::new()
+        .timeout_read(Duration::from_secs(5))
+        .timeout_write(Duration::from_secs(5))
+        .build();
+    discord::connect(&mut discord_client);
+
+    loop {
+        sleep(Duration::from_secs(5));
+
+        let response = match trakt::get_watching(&agent, &cfg.trakt_username, &cfg.trakt_client_id)
+        {
+            Some(response) => response,
+            None => continue,
+        };
+
+        let payload = discord::set_activity(&mut discord_client, &response);
+    }
+}
