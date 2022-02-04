@@ -1,13 +1,5 @@
-use discord_rich_presence::DiscordIpc;
-use discrakt::{
-    config::load_config,
-    discord,
-    trakt::{self, TraktBodyResponse},
-};
-use std::{
-    thread::{self, sleep},
-    time::Duration,
-};
+use discrakt::{config::load_config, discord, trakt};
+use std::{thread::sleep, time::Duration};
 use ureq::{Agent, AgentBuilder};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,6 +20,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None => continue,
         };
 
-        let payload = discord::set_activity(&mut discord_client, &response);
+        discord::set_activity(&mut discord_client, &response);
     }
 }
