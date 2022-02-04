@@ -61,12 +61,10 @@ pub fn get_watching(
         .into_string()
         .unwrap();
 
-    println!("{}", response);
-
     let deserialized: TraktBodyResponse = match serde_json::from_str(&response) {
         Ok(response) => response,
-        Err(e) => {
-            println!("{}", e);
+        Err(_) => {
+            println!("Nothing is being played");
             return None;
         }
     };
