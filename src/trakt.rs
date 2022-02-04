@@ -1,4 +1,3 @@
-use discord_rich_presence::activity::{Activity, Assets};
 use serde::{Deserialize, Serialize};
 use ureq::Agent;
 
@@ -12,25 +11,25 @@ pub struct TraktMovie {
 #[derive(Serialize, Deserialize)]
 pub struct TraktShow {
     pub title: String,
-    pub year: String,
+    pub year: u16,
     pub ids: TraktIds,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct TraktEpisode {
-    pub season: String,
-    pub number: String,
+    pub season: u8,
+    pub number: u8,
     pub title: String,
     pub ids: TraktIds,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct TraktIds {
-    pub trakt: String,
-    pub slug: String,
-    pub tvdb: Option<String>,
+    pub trakt: u32,
+    pub slug: Option<String>,
+    pub tvdb: Option<u32>,
     pub imdb: Option<String>,
-    pub tmdb: Option<String>,
+    pub tmdb: Option<u32>,
     pub tvrage: Option<String>,
 }
 
@@ -39,7 +38,7 @@ pub struct TraktBodyResponse {
     pub expires_at: String,
     pub started_at: String,
     pub action: String,
-    pub type_: String,
+    pub r#type: String,
     pub movie: Option<TraktMovie>,
     pub show: Option<TraktShow>,
     pub episode: Option<TraktEpisode>,
@@ -61,6 +60,8 @@ pub fn get_watching(
         .unwrap()
         .into_string()
         .unwrap();
+
+    println!("{}", response);
 
     let deserialized: TraktBodyResponse = match serde_json::from_str(&response) {
         Ok(response) => response,
