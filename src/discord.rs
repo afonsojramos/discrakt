@@ -1,10 +1,8 @@
-use std::{thread::sleep, time::Duration};
-
 use discord_rich_presence::{
     activity::{Activity, Assets},
     new_client, DiscordIpc,
 };
-use serde_json::Error;
+use std::{thread::sleep, time::Duration};
 
 use crate::trakt::TraktBodyResponse;
 
@@ -29,7 +27,7 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
     let state;
     let media;
 
-    match trakt_response.type_.as_str() {
+    match trakt_response.r#type.as_str() {
         "movie" => {
             let movie = trakt_response.movie.as_ref().unwrap();
             details = movie.title.to_owned();
@@ -43,7 +41,7 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
             media = "tv";
         }
         _ => {
-            println!("Unknown media type: {}", trakt_response.type_);
+            println!("Unknown media type: {}", trakt_response.r#type);
             return;
         }
     }
