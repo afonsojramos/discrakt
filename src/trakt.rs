@@ -4,7 +4,7 @@ use ureq::Agent;
 #[derive(Serialize, Deserialize)]
 pub struct TraktMovie {
     pub title: String,
-    pub year: String,
+    pub year: u16,
     pub ids: TraktIds,
 }
 
