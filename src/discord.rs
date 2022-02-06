@@ -36,7 +36,8 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
         }
         "episode" if trakt_response.episode.is_some() => {
             let episode = trakt_response.episode.as_ref().unwrap();
-            details = episode.title.to_owned();
+            let show = trakt_response.show.as_ref().unwrap();
+            details = show.title.to_owned();
             state = format!("S{}E{} - {}", episode.season, episode.number, episode.title,);
             media = "tv";
         }
@@ -50,7 +51,7 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
         Assets::new()
             .large_image(&media)
             .large_text("hello")
-            .small_image("movie")
+            .small_image("trakt")
             .small_text("movie"),
     );
 
