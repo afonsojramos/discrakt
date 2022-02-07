@@ -5,7 +5,7 @@ use discord_rich_presence::{
 };
 use std::{thread::sleep, time::Duration};
 
-use crate::trakt::TraktBodyResponse;
+use crate::trakt::{Trakt, TraktWatchingResponse};
 
 pub fn new(discord_token: String) -> Result<impl DiscordIpc, Box<dyn std::error::Error>> {
     new_client(&discord_token)
@@ -23,7 +23,11 @@ pub fn connect(discord_client: &mut impl DiscordIpc) {
     }
 }
 
-pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &TraktBodyResponse) {
+pub fn set_activity(
+    discord_client: &mut impl DiscordIpc,
+    trakt_response: &TraktWatchingResponse,
+    trakt: &mut Trakt,
+) {
     let details;
     let state;
     let media;
@@ -39,8 +43,13 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
     match trakt_response.r#type.as_str() {
         "movie" => {
             let movie = trakt_response.movie.as_ref().unwrap();
-            details = movie.title.to_string();
-            state = movie.year.to_string();
+            details = format!("{} ({})", movie.title.to_string(), movie.year.to_string());
+            state = format!(
+                "{:.1} ⭐️",
+                Trakt::get_movie_rating(trakt, movie.ids.slug.as_ref().unwrap())
+                    .as_ref()
+                    .unwrap()
+            );
             media = "movies";
             link_imdb = format!("https://www.imdb.com/title/{}", movie.ids.imdb);
             link_trakt = format!(
