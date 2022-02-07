@@ -17,7 +17,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let response = match trakt::get_watching(&agent, &cfg.trakt_username, &cfg.trakt_client_id)
         {
             Some(response) => response,
-            None => continue,
+            None => {
+                println!("Nothing is being played");
+                continue;
+            }
         };
 
         discord::set_activity(&mut discord_client, &response);

@@ -1,5 +1,6 @@
+use chrono::{DateTime, Utc};
 use discord_rich_presence::{
-    activity::{Activity, Assets},
+    activity::{Activity, Assets, Timestamps},
     new_client, DiscordIpc,
 };
 use std::{thread::sleep, time::Duration};
@@ -26,20 +27,25 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
     let details;
     let state;
     let media;
+    let start_date = DateTime::parse_from_rfc3339(&trakt_response.started_at).unwrap();
+    let end_date = DateTime::parse_from_rfc3339(&trakt_response.expires_at).unwrap();
+    let percentage = Utc::now().signed_duration_since(start_date).num_seconds() as f32
+        / end_date.signed_duration_since(start_date).num_seconds() as f32;
+    let watch_percentage = format!("{:.2}%", percentage * 100.0);
 
     match trakt_response.r#type.as_str() {
         "movie" => {
             let movie = trakt_response.movie.as_ref().unwrap();
-            details = movie.title.to_owned();
-            state = movie.year.to_owned();
-            media = "movie";
+            details = movie.title.to_string();
+            state = movie.year.to_string();
+            media = "movies";
         }
         "episode" if trakt_response.episode.is_some() => {
             let episode = trakt_response.episode.as_ref().unwrap();
             let show = trakt_response.show.as_ref().unwrap();
-            details = show.title.to_owned();
-            state = format!("S{}E{} - {}", episode.season, episode.number, episode.title,);
-            media = "tv";
+            details = show.title.to_string();
+            state = format!("S{}E{} - {}", episode.season, episode.number, episode.title);
+            media = "shows";
         }
         _ => {
             println!("Unknown media type: {}", trakt_response.r#type);
@@ -47,13 +53,23 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
         }
     }
 
-    let payload = Activity::new().details(&details).state(&state).assets(
-        Assets::new()
-            .large_image(&media)
-            .large_text("hello")
-            .small_image("trakt")
-            .small_text("movie"),
-    );
+    println!("{} - {} | {}", details, state, watch_percentage);
+
+    let payload = Activity::new()
+        .details(&details)
+        .state(&state)
+        .assets(
+            Assets::new()
+                .large_image(&media)
+                .large_text(&watch_percentage)
+                .small_image("trakt")
+                .small_text("Discrakt"),
+        )
+        .timestamps(
+            Timestamps::new()
+                .start(start_date.timestamp())
+                .end(end_date.timestamp()),
+        );
 
     if discord_client.set_activity(payload).is_err() && discord_client.reconnect().is_ok() {
         return;
