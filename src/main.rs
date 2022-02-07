@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     discord::connect(&mut discord_client);
 
     loop {
-        sleep(Duration::from_secs(5));
+        sleep(Duration::from_secs(15));
 
         let response = match trakt::get_watching(&agent, &cfg.trakt_username, &cfg.trakt_client_id)
         {
