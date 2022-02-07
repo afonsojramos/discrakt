@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use discord_rich_presence::{
     activity::{Activity, Assets, Timestamps},
     new_client, DiscordIpc,
@@ -29,7 +29,8 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
     let media;
     let start_date = DateTime::parse_from_rfc3339(&trakt_response.started_at).unwrap();
     let end_date = DateTime::parse_from_rfc3339(&trakt_response.expires_at).unwrap();
-    let percentage = Utc::now().signed_duration_since(start_date).num_seconds() as f32
+    let now = Utc::now();
+    let percentage = now.signed_duration_since(start_date).num_seconds() as f32
         / end_date.signed_duration_since(start_date).num_seconds() as f32;
     let watch_percentage = format!("{:.2}%", percentage * 100.0);
 
@@ -53,7 +54,13 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
         }
     }
 
-    println!("{} - {} | {}", details, state, watch_percentage);
+    println!(
+        "{} : {} - {} | {}",
+        now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        details,
+        state,
+        watch_percentage
+    );
 
     let payload = Activity::new()
         .details(&details)
