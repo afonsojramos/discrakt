@@ -8,6 +8,12 @@ repository = "https://github.com/afonsojramos/discrakt"
 license = "MIT"
 keywords = ["discord", "trakt", "rust"]
 readme = "README.md"
+exclude = [
+    ".github/*",
+    "images/*.psd",
+    "credentials.ini",
+    ".gitignore",
+]
 
 [dependencies]
 discord-rich-presence = "0.1"
