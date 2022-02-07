@@ -57,7 +57,10 @@ impl Discord {
                         .unwrap()
                 );
                 media = "movies";
-                link_imdb = format!("https://www.imdb.com/title/{}", movie.ids.imdb);
+                link_imdb = format!(
+                    "https://www.imdb.com/title/{}",
+                    movie.ids.imdb.as_ref().unwrap()
+                );
                 link_trakt = format!(
                     "https://trakt.tv/{}/{}",
                     media,
@@ -70,7 +73,10 @@ impl Discord {
                 details = show.title.to_string();
                 state = format!("S{}E{} - {}", episode.season, episode.number, episode.title);
                 media = "shows";
-                link_imdb = format!("https://www.imdb.com/title/{}", show.ids.imdb);
+                link_imdb = format!(
+                    "https://www.imdb.com/title/{}",
+                    show.ids.imdb.as_ref().unwrap()
+                );
                 link_trakt = format!(
                     "https://trakt.tv/{}/{}",
                     media,
