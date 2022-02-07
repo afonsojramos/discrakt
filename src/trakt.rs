@@ -28,7 +28,7 @@ pub struct TraktIds {
     pub trakt: u32,
     pub slug: Option<String>,
     pub tvdb: Option<u32>,
-    pub imdb: Option<String>,
+    pub imdb: String,
     pub tmdb: Option<u32>,
     pub tvrage: Option<String>,
 }
