@@ -18,7 +18,7 @@ jobs:
         uses: Swatinem/rust-cache@v1
 
       - name: Build Binary
-        run: cargo build --locked
+        run: cargo build
 
       - name: Run Unit Tests
         run: cargo test
