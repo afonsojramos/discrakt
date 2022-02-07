@@ -1,6 +1,6 @@
 use chrono::{DateTime, SecondsFormat, Utc};
 use discord_rich_presence::{
-    activity::{Activity, Assets, Timestamps},
+    activity::{Activity, Assets, Button, Timestamps},
     new_client, DiscordIpc,
 };
 use std::{thread::sleep, time::Duration};
@@ -27,6 +27,8 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
     let details;
     let state;
     let media;
+    let link_imdb;
+    let link_trakt;
     let start_date = DateTime::parse_from_rfc3339(&trakt_response.started_at).unwrap();
     let end_date = DateTime::parse_from_rfc3339(&trakt_response.expires_at).unwrap();
     let now = Utc::now();
@@ -40,6 +42,12 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
             details = movie.title.to_string();
             state = movie.year.to_string();
             media = "movies";
+            link_imdb = format!("https://www.imdb.com/title/{}", movie.ids.imdb);
+            link_trakt = format!(
+                "https://trakt.tv/{}/{}",
+                media,
+                movie.ids.slug.as_ref().unwrap().to_string()
+            );
         }
         "episode" if trakt_response.episode.is_some() => {
             let episode = trakt_response.episode.as_ref().unwrap();
@@ -47,6 +55,12 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
             details = show.title.to_string();
             state = format!("S{}E{} - {}", episode.season, episode.number, episode.title);
             media = "shows";
+            link_imdb = format!("https://www.imdb.com/title/{}", show.ids.imdb);
+            link_trakt = format!(
+                "https://trakt.tv/{}/{}",
+                media,
+                show.ids.slug.as_ref().unwrap().to_string()
+            );
         }
         _ => {
             println!("Unknown media type: {}", trakt_response.r#type);
@@ -76,7 +90,11 @@ pub fn set_activity(discord_client: &mut impl DiscordIpc, trakt_response: &Trakt
             Timestamps::new()
                 .start(start_date.timestamp())
                 .end(end_date.timestamp()),
-        );
+        )
+        .buttons(vec![
+            Button::new("IMDB", &link_imdb),
+            Button::new("Trakt", &link_trakt),
+        ]);
 
     if discord_client.set_activity(payload).is_err() && discord_client.reconnect().is_ok() {
         return;
