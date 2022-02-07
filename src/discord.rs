@@ -49,10 +49,10 @@ impl Discord {
         match trakt_response.r#type.as_str() {
             "movie" => {
                 let movie = trakt_response.movie.as_ref().unwrap();
-                details = format!("{} ({})", movie.title.to_string(), movie.year.to_string());
+                details = format!("{} ({})", movie.title, movie.year);
                 state = format!(
                     "{:.1} ⭐️",
-                    Trakt::get_movie_rating(trakt, movie.ids.slug.as_ref().unwrap())
+                    Trakt::get_movie_rating(trakt, movie.ids.slug.as_ref().unwrap().to_string())
                         .as_ref()
                         .unwrap()
                 );
@@ -61,7 +61,7 @@ impl Discord {
                 link_trakt = format!(
                     "https://trakt.tv/{}/{}",
                     media,
-                    movie.ids.slug.as_ref().unwrap().to_string()
+                    movie.ids.slug.as_ref().unwrap()
                 );
             }
             "episode" if trakt_response.episode.is_some() => {
@@ -74,7 +74,7 @@ impl Discord {
                 link_trakt = format!(
                     "https://trakt.tv/{}/{}",
                     media,
-                    show.ids.slug.as_ref().unwrap().to_string()
+                    show.ids.slug.as_ref().unwrap()
                 );
             }
             _ => {
@@ -96,7 +96,7 @@ impl Discord {
             .state(&state)
             .assets(
                 Assets::new()
-                    .large_image(&media)
+                    .large_image(media)
                     .large_text(&watch_percentage)
                     .small_image("trakt")
                     .small_text("Discrakt"),
@@ -111,8 +111,8 @@ impl Discord {
                 Button::new("Trakt", &link_trakt),
             ]);
 
-        if self.client.set_activity(payload).is_err() && self.client.reconnect().is_ok() {
-            return;
+        if self.client.set_activity(payload).is_err() {
+            self.client.reconnect().unwrap();
         }
     }
 }

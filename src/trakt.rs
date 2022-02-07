@@ -92,8 +92,8 @@ impl Trakt {
         }
     }
 
-    pub fn get_movie_rating(&mut self, movie_slug: &String) -> Option<f64> {
-        match self.cache.get(movie_slug) {
+    pub fn get_movie_rating(&mut self, movie_slug: String) -> Option<f64> {
+        match self.cache.get(&movie_slug) {
             Some(rating) => Some(*rating),
             None => {
                 let endpoint = format!("https://api.trakt.tv/movies/{}/ratings", movie_slug);
@@ -118,7 +118,7 @@ impl Trakt {
                     }
                     Err(err) => {
                         println!("{}", err);
-                        return None;
+                        None
                     }
                 }
             }
