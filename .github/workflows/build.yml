@@ -1,0 +1,24 @@
+name: Main Workflow
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    name: Build
+    strategy:
+      matrix:
+        rust-version: ["1.55", "1.56", "1.57", "1.58"]
+    runs-on: ubuntu-latest
+    container: rust:${{ matrix.rust-version }}
+    steps:
+      - name: Repository Checkout
+        uses: actions/checkout@v2
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v1
+
+      - name: Build Binary
+        run: cargo build --locked
+
+      - name: Run Unit Tests
+        run: cargo test
