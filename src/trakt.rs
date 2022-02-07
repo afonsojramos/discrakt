@@ -29,7 +29,7 @@ pub struct TraktIds {
     pub trakt: u32,
     pub slug: Option<String>,
     pub tvdb: Option<u32>,
-    pub imdb: String,
+    pub imdb: Option<String>,
     pub tmdb: Option<u32>,
     pub tvrage: Option<String>,
 }
@@ -86,9 +86,14 @@ impl Trakt {
             .into_string()
             .unwrap();
 
+        println!("{}", response);
+
         match serde_json::from_str(&response) {
             Ok(response) => Some(response),
-            Err(_) => None,
+            Err(err) => {
+                println!("{}", err);
+                None
+            }
         }
     }
 
