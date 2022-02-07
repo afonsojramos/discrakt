@@ -1,12 +1,13 @@
 [package]
 name = "discrakt"
-version = "0.1.0"
+version = "2.0.0"
 edition = "2021"
 authors = ["afonsojramos"]
 description = "Easy to Use Trakt/Plex Discord Rich Presence"
 repository = "https://github.com/afonsojramos/discrakt"
 license = "MIT"
 keywords = ["discord", "trakt", "rust"]
+readme = "README.md"
 
 [dependencies]
 discord-rich-presence = "0.1"
