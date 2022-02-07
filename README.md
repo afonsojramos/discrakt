@@ -14,7 +14,7 @@ A simple python script that acts as a bridge between [Discord](https://discord.c
 
 1. Create an API Application on [Trakt.tv](https://trakt.tv/oauth/applications/new) (with scrobble capabilities and `urn:ietf:wg:oauth:2.0:oob` as the redirect uri) and an Application on [Discord](https://discord.com/developers/applications).
 2. Edit the `credentials.ini` file with the required API keys (Cliend IDs) and Trakt username.
-3. In the [Discord Developer Dashboard](https://discord.com/developers/applications), within your application and under **Rich Presence** -> **Art Assets**, upload the application images, either the ones located in `/images` or ones that you choose to submit (as long as the keys for those images stay `tv` and `movie`).
+3. In the [Discord Developer Dashboard](https://discord.com/developers/applications), within your application and under **Rich Presence** -> **Art Assets**, upload the application images, either the ones located in `/images` or ones that you choose to submit (as long as the keys for those images stay `shows` and `movies`).
 4. Run the respective executable and you're ready to start sharing your progress!
 
 *P.S.* Discord needs to be running on the machine Discrakt is running on. 
@@ -29,17 +29,8 @@ Set the script/executable to run at startup so you don't have to worry about it 
 
 ## Development
 
-As usual, it is recommended to use [venv](https://docs.python.org/3/library/venv.html) and [Python 3.9](https://www.python.org/). 
-
-After this, simply install the dependencies using `pip install -r requirements.txt`.
-
-### Running from script
-
-After setting things up by following the previous section, you can run this script with: `python discrakt.py`
-
-When a show is detected throught the Trakt API, a similar output is expected in the logs:
-
-<p align="center"><img src="./images/demo/console.png"><p>
+Make sure you've installed Rust. You can install Rust and its package manager, `cargo` by following the instructions on [rustup.rs](https://rustup.rs/).
+After installing the requirements below, simply run `cargo run`.
 
 ## Thank You
 
