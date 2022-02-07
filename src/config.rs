@@ -8,7 +8,7 @@ pub struct Env {
 
 pub fn load_config() -> Env {
     let mut config = Ini::new();
-    config.load("./credentials.ini").unwrap();
+    config.load("credentials.ini").unwrap();
 
     Env {
         discord_token: config
