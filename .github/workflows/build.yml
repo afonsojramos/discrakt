@@ -7,7 +7,7 @@ jobs:
     name: Build
     strategy:
       matrix:
-        rust-version: ["1.55", "1.56", "1.57", "1.58"]
+        rust-version: ["1.57", "1.58"]
     runs-on: ubuntu-latest
     container: rust:${{ matrix.rust-version }}
     steps:
