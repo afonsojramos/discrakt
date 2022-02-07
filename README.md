@@ -27,7 +27,7 @@ Running the executables is as easy as clicking the provided executables in the l
 
 #### Optional:
 
-Set the script/executable to run at startup so you don't have to worry about it again ([Windows](https://support.microsoft.com/en-us/windows/add-an-app-to-run-automatically-at-startup-in-windows-10-150da165-dcd9-7230-517b-cf3c295d89dd)/[Unix](https://raspberrypi.stackexchange.com/questions/15475/run-bash-script-on-startup))!
+Set the script/executable to run at startup so you don't have to worry about it again ([Windows](https://support.microsoft.com/en-us/windows/add-an-app-to-run-automatically-at-startup-in-windows-10-150da165-dcd9-7230-517b-cf3c295d89dd)/[Unix](https://raspberrypi.stackexchange.com/questions/15475/run-bash-script-on-startup)[MacOS](https://www.karltarvas.com/2020/09/11/macos-run-script-on-startup.html))!
 
 ## Development
 
