@@ -22,3 +22,96 @@ jobs:
 
       - name: Run Unit Tests
         run: cargo test
+
+      - name: Edit `Cargo.toml`
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag=`sed 's/v//g' <<< "${{ github.ref_name }}"`
+          sed -i -E "s/(version = \")[0-9]*\.[0-9]*\.[0-9]*(\")/\1$tag\2/g" Cargo.toml
+      - name: Commit `Cargo.toml` update
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: EndBug/add-and-commit@v7
+        with:
+          message: "bump: Updated to version ${{ github.ref_name }}"
+          branch: main
+
+  publish-linux:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install latest rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
+
+      - name: Build
+        run: cargo build --all --release && strip target/release/discrakt && mv target/release/discrakt target/release/discrakt_amd64
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            target/release/discrakt_amd64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-win:
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install latest rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
+
+      - name: Build
+        run: cargo build --all --release
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: target/release/discrakt.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-mac:
+    runs-on: macos-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install latest rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-apple-darwin
+          default: true
+          override: true
+
+      - name: Build for mac
+        run: cargo build --all --release && strip target/release/discrakt && mv target/release/discrakt target/release/discrakt_darwin
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            target/release/discrakt_darwin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
