@@ -47,6 +47,7 @@ jobs:
         with:
           files: |
             target/release/discrakt_amd64
+            credentials.ini
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
