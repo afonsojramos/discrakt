@@ -4,9 +4,9 @@
 
 A simple app that acts as a bridge between [Discord](https://discord.com/) and [Trakt](https://trakt.tv) (and maybe even [Plex](https://www.plex.tv/)), allowing for the display of the watch status as [Discord's Rich Presence](https://discord.com/rich-presence). Essentially, it's a Trakt/Plex Discord Rich Presence.
 
-<p align="center"><img src="./images/demo/member-list.png" width="170px"><p>
+<p align="center"><img src="./images/demo/member-list.png" width="260px"><p>
 
-<p align="center"><img src="./images/demo/profile-status.png" width="170px"><p>
+<p align="center"><img src="./images/demo/profile-status.png" width="260px"><p>
 
 **Protip**: If you are already using Plex, and would like to link it with Trakt, you can use the [Plex-Trakt-Scrobbler](https://github.com/trakt/Plex-Trakt-Scrobbler) plugin.
 
