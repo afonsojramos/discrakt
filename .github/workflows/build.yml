@@ -78,7 +78,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create silent executable
-        uses: DamianReeves/write-file-action
+        uses: DamianReeves/write-file-action@v1
         with:
           path: src/main.rs
           contents: |
