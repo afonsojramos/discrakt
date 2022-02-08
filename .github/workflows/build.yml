@@ -78,12 +78,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create silent executable
-        uses: DamianReeves/write-file-action@v1
-        with:
-          path: src/main.rs
-          contents: |
-            #![windows_subsystem = "windows"]
-          write-mode: prepend
+        run: sed -i '1i\#\!\[windows_subsystem\ \=\ \"windows\"\]' src/main.rs
 
       - name: Build silent executable
         run: cargo build --all --release && mv target/release/discrakt.exe target/release/discrakt_silent.exe
