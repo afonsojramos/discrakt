@@ -31,7 +31,7 @@ pub struct TraktIds {
     pub tvdb: Option<u32>,
     pub imdb: Option<String>,
     pub tmdb: Option<u32>,
-    pub tvrage: Option<String>,
+    pub tvrage: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -86,14 +86,9 @@ impl Trakt {
             .into_string()
             .unwrap();
 
-        println!("{}", response);
-
         match serde_json::from_str(&response) {
             Ok(response) => Some(response),
-            Err(err) => {
-                println!("{}", err);
-                None
-            }
+            Err(_) => None,
         }
     }
 
@@ -121,10 +116,7 @@ impl Trakt {
                         self.cache.insert(movie_slug.to_string(), response.rating);
                         Some(response.rating)
                     }
-                    Err(err) => {
-                        println!("{}", err);
-                        None
-                    }
+                    Err(_) => Some(0.0),
                 }
             }
         }
