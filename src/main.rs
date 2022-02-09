@@ -1,5 +1,8 @@
-use chrono::{SecondsFormat, Utc};
-use discrakt::{config::load_config, discord::Discord, trakt::Trakt};
+use discrakt::{
+    discord::Discord,
+    trakt::Trakt,
+    utils::{load_config, log},
+};
 use std::{thread::sleep, time::Duration};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,10 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let response = match Trakt::get_watching(&trakt) {
             Some(response) => response,
             None => {
-                println!(
-                    "{} : Nothing is being played",
-                    Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-                );
+                log("Nothing is being played");
                 // resets the connection to also reset the activity
                 Discord::close(&mut discord);
                 continue;

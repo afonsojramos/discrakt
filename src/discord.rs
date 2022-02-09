@@ -1,11 +1,14 @@
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, Utc};
 use discord_rich_presence::{
     activity::{Activity, Assets, Button, Timestamps},
     new_client, DiscordIpc,
 };
 use std::{thread::sleep, time::Duration};
 
-use crate::trakt::{Trakt, TraktWatchingResponse};
+use crate::{
+    trakt::{Trakt, TraktWatchingResponse},
+    utils::log,
+};
 
 pub struct Discord {
     client: Box<dyn DiscordIpc>,
@@ -23,7 +26,7 @@ impl Discord {
             if self.client.connect().is_ok() {
                 break;
             } else {
-                println!("Failed to connect to Discord, retrying in 15 seconds");
+                log("Failed to connect to Discord, retrying in 15 seconds");
                 sleep(Duration::from_secs(15));
             }
         }
@@ -84,18 +87,12 @@ impl Discord {
                 );
             }
             _ => {
-                println!("Unknown media type: {}", trakt_response.r#type);
+                log(&format!("Unknown media type: {}", trakt_response.r#type));
                 return;
             }
         }
 
-        println!(
-            "{} : {} - {} | {}",
-            now.to_rfc3339_opts(SecondsFormat::Secs, true),
-            details,
-            state,
-            watch_percentage
-        );
+        log(&format!("{} - {} | {}", details, state, watch_percentage));
 
         let payload = Activity::new()
             .details(&details)

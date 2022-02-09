@@ -1,3 +1,4 @@
+use chrono::{SecondsFormat, Utc};
 use configparser::ini::Ini;
 
 pub struct Env {
@@ -21,4 +22,12 @@ pub fn load_config() -> Env {
             .get("Trakt API", "traktClientID")
             .expect("traktClientID not found"),
     }
+}
+
+pub fn log(message: &str) {
+    println!(
+        "{} : {}",
+        Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+        message
+    );
 }
