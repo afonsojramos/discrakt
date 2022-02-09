@@ -118,7 +118,7 @@ impl Discord {
             ]);
 
         if self.client.set_activity(payload).is_err() {
-            self.client.reconnect().unwrap();
+            self.connect();
         }
     }
 }

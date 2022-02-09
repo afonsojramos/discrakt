@@ -1,6 +1,6 @@
 [package]
 name = "discrakt"
-version = "2.2.2"
+version = "2.2.3"
 edition = "2021"
 authors = ["afonsojramos"]
 description = "Easy to Use Trakt/Plex Discord Rich Presence"
@@ -17,8 +17,7 @@ exclude = [
 
 [dependencies]
 discord-rich-presence = "0.1"
-ureq = { version = "2.4" }
+ureq = { version = "2.4", features = ["json"] }
 configparser = "3.0.0"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 chrono = "0.4"
