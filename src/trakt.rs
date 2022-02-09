@@ -89,7 +89,7 @@ impl Trakt {
 
         match response.into_json() {
             Ok(body) => body,
-            Err(_) => return None,
+            Err(_) => None,
         }
     }
 
