@@ -1,22 +1,22 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{collections::HashMap, time::Duration};
 use ureq::{Agent, AgentBuilder};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct TraktMovie {
     pub title: String,
     pub year: u16,
     pub ids: TraktIds,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct TraktShow {
     pub title: String,
     pub year: u16,
     pub ids: TraktIds,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct TraktEpisode {
     pub season: u8,
     pub number: u8,
@@ -24,7 +24,7 @@ pub struct TraktEpisode {
     pub ids: TraktIds,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct TraktIds {
     pub trakt: u32,
     pub slug: Option<String>,
@@ -34,7 +34,7 @@ pub struct TraktIds {
     pub tvrage: Option<u32>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct TraktWatchingResponse {
     pub expires_at: String,
     pub started_at: String,
@@ -45,7 +45,7 @@ pub struct TraktWatchingResponse {
     pub episode: Option<TraktEpisode>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct TraktRatingsResponse {
     pub rating: f64,
     pub votes: u32,
@@ -75,19 +75,20 @@ impl Trakt {
     pub fn get_watching(&self) -> Option<TraktWatchingResponse> {
         let endpoint = format!("https://api.trakt.tv/users/{}/watching", self.username);
 
-        let response: String = self
+        let response = match self
             .agent
             .get(&endpoint)
             .set("Content-Type", "application/json")
             .set("trakt-api-version", "2")
             .set("trakt-api-key", &self.client_id)
             .call()
-            .unwrap()
-            .into_string()
-            .unwrap();
+        {
+            Ok(response) => response,
+            Err(_) => return None,
+        };
 
-        match serde_json::from_str(&response) {
-            Ok(response) => Some(response),
+        match response.into_json() {
+            Ok(body) => body,
             Err(_) => None,
         }
     }
@@ -98,23 +99,23 @@ impl Trakt {
             None => {
                 let endpoint = format!("https://api.trakt.tv/movies/{}/ratings", movie_slug);
 
-                let response: String = self
+                let response = match self
                     .agent
                     .get(&endpoint)
                     .set("Content-Type", "application/json")
                     .set("trakt-api-version", "2")
                     .set("trakt-api-key", &self.client_id)
                     .call()
-                    .unwrap()
-                    .into_string()
-                    .unwrap();
+                {
+                    Ok(response) => response,
+                    Err(_) => return Some(0.0),
+                };
 
-                println!("{:?}", response);
-
-                match serde_json::from_str(&response) as Result<TraktRatingsResponse, _> {
-                    Ok(response) => {
-                        self.cache.insert(movie_slug.to_string(), response.rating);
-                        Some(response.rating)
+                match response.into_json() {
+                    Ok(body) => {
+                        let body: TraktRatingsResponse = body;
+                        self.cache.insert(movie_slug.to_string(), body.rating);
+                        Some(body.rating)
                     }
                     Err(_) => Some(0.0),
                 }
