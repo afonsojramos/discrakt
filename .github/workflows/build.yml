@@ -77,7 +77,7 @@ jobs:
           override: true
 
       - name: Build
-        run: cargo build --all --release
+        run: cargo build --all --release && mv target/release/discrakt.exe target/release/discrakt_win64.exe
 
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -90,7 +90,7 @@ jobs:
         run: sed -i '1i\#\!\[windows_subsystem\ \=\ \"windows\"\]' src/main.rs
 
       - name: Build silent executable
-        run: cargo build --all --release && mv target/release/discrakt_win64.exe target/release/discrakt_silent_win64.exe
+        run: cargo build --all --release && mv target/release/discrakt.exe target/release/discrakt_silent_win64.exe
 
       - name: Release silent executable
         uses: softprops/action-gh-release@v1
