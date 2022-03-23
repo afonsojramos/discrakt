@@ -76,7 +76,7 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: target/release/discrakt.exe
+          files: target/release/discrakt_win64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -84,12 +84,12 @@ jobs:
         run: sed -i '1i\#\!\[windows_subsystem\ \=\ \"windows\"\]' src/main.rs
 
       - name: Build silent executable
-        run: cargo build --all --release && mv target/release/discrakt.exe target/release/discrakt_silent.exe
+        run: cargo build --all --release && mv target/release/discrakt_win64.exe target/release/discrakt_silent_win64.exe
 
       - name: Release silent executable
         uses: softprops/action-gh-release@v1
         with:
-          files: target/release/discrakt_silent.exe
+          files: target/release/discrakt_silent_win64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
