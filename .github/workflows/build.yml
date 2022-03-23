@@ -51,10 +51,17 @@ jobs:
       - name: Chmod
         run: chmod +x target/release/discrakt_amd64
 
+      - name: Build
+        run: cargo build --all --release --target=aarch64-unknown-linux-musl && strip target/release/discrakt && mv target/release/discrakt target/release/discrakt_arm64
+
+      - name: Chmod
+        run: chmod +x target/release/discrakt_arm64
+
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
+            target/release/discrakt_arm64
             target/release/discrakt_amd64
             credentials.ini
         env:
@@ -79,13 +86,6 @@ jobs:
       - name: Build
         run: cargo build --all --release && mv target/release/discrakt.exe target/release/discrakt_win64.exe
 
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: target/release/discrakt_win64.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Create silent executable
         run: sed -i '1i\#\!\[windows_subsystem\ \=\ \"windows\"\]' src/main.rs
 
@@ -95,7 +95,9 @@ jobs:
       - name: Release silent executable
         uses: softprops/action-gh-release@v1
         with:
-          files: target/release/discrakt_silent_win64.exe
+          files: |
+            target/release/discrakt_silent_win64.exe
+            target/release/discrakt_win64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -122,10 +124,17 @@ jobs:
       - name: Chmod
         run: chmod +x target/release/discrakt_darwin
 
+      - name: Build
+        run: cargo build --all --release --target=aarch64-apple-darwin && strip target/release/discrakt && mv target/release/discrakt target/release/discrakt_darwin_arm64
+
+      - name: Chmod
+        run: chmod +x target/release/discrakt_darwin_arm64
+
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
+            target/release/discrakt_darwin_arm64
             target/release/discrakt_darwin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
