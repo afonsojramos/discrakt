@@ -21,3 +21,6 @@ ureq = { version = "2.4", features = ["json"] }
 configparser = "3.0.0"
 serde = { version = "1.0", features = ["derive"] }
 chrono = "0.4"
+
+[profile.release]
+strip = "debuginfo"

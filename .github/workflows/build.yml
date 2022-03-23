@@ -46,16 +46,16 @@ jobs:
           override: true
 
       - name: Build
-        run: cargo build --all --release && strip target/release/discrakt && mv target/release/discrakt target/release/discrakt_amd64
+        run: cargo build --all --release && mv target/release/discrakt target/release/discrakt_amd64
 
       - name: Chmod
         run: chmod +x target/release/discrakt_amd64
 
-      - name: Build
-        run: cargo build --all --release --target=aarch64-unknown-linux-musl && strip target/release/discrakt && mv target/release/discrakt target/release/discrakt_arm64
-
       - name: Add ARM Target
         run: rustup target add aarch64-unknown-linux-musl
+
+      - name: Build
+        run: cargo build --all --release --target=aarch64-unknown-linux-musl && mv target/release/discrakt target/release/discrakt_arm64
 
       - name: Chmod
         run: chmod +x target/release/discrakt_arm64
@@ -122,7 +122,7 @@ jobs:
           override: true
 
       - name: Build for mac
-        run: cargo build --all --release && strip target/release/discrakt && mv target/release/discrakt target/release/discrakt_darwin
+        run: cargo build --all --release && mv target/release/discrakt target/release/discrakt_darwin
 
       - name: Chmod
         run: chmod +x target/release/discrakt_darwin
@@ -131,7 +131,7 @@ jobs:
         run: rustup target add aarch64-apple-darwin
 
       - name: Build
-        run: cargo build --all --release --target=aarch64-apple-darwin && strip target/release/discrakt && mv target/release/discrakt target/release/discrakt_darwin_arm64
+        run: cargo build --all --release --target=aarch64-apple-darwin && mv target/release/discrakt target/release/discrakt_darwin_arm64
 
       - name: Chmod
         run: chmod +x target/release/discrakt_darwin_arm64
