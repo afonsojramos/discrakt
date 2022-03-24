@@ -31,7 +31,7 @@ jobs:
 
   publish-linux:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    #if: startsWith(github.ref, 'refs/tags/')
     needs: build
 
     steps:
@@ -51,24 +51,47 @@ jobs:
       - name: Chmod
         run: chmod +x target/release/discrakt_amd64
 
-      - name: Add ARM Target
-        run: rustup target add aarch64-unknown-linux-gnu
+      - uses: uraimo/run-on-arch-action@v2
+        name: Build artifact
+        id: build
+        with:
+          arch: aarch64
+          distro: bullseye
+          githubToken: ${{ github.token }}
 
-      - name: Build
-        run: cargo build --all --release --target=aarch64-unknown-linux-gnu && mv target/aarch64-unknown-linux-gnu/release/discrakt target/release/discrakt_arm64
+          # Create an artifacts directory
+          setup: |
+            mkdir -p "${PWD}/artifacts"
+
+          # Mount the artifacts directory as /artifacts in the container
+          dockerRunArgs: |
+            --volume "${PWD}/artifacts:/artifacts"
+
+          install: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+
+          run: |
+            cargo build --all --release --target=aarch64-unknown-linux-gnu && mv target/aarch64-unknown-linux-gnu/release/discrakt /artifacts/discrakt_arm64
+
+      # - name: Build
+      #   run: cargo build --all --release --target=aarch64-unknown-linux-gnu && mv target/aarch64-unknown-linux-gnu/release/discrakt target/release/discrakt_arm64
+
+      - name: Show the artifact
+        run: |
+          ls -al "${PWD}/artifacts"
 
       - name: Chmod
-        run: chmod +x target/release/discrakt_arm64
+        run: chmod +x ${PWD}/artifacts/discrakt_arm64
 
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            target/release/discrakt_arm64
-            target/release/discrakt_amd64
-            credentials.ini
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     files: |
+      #       target/release/discrakt_arm64
+      #       target/release/discrakt_amd64
+      #       credentials.ini
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-win:
     runs-on: windows-latest
