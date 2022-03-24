@@ -67,10 +67,8 @@ jobs:
           dockerRunArgs: |
             --volume "${PWD}/artifacts:/artifacts"
 
-          install: |
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-
           run: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
             cargo build --all --release --target=aarch64-unknown-linux-gnu && mv target/aarch64-unknown-linux-gnu/release/discrakt /artifacts/discrakt_arm64
 
       # - name: Build
