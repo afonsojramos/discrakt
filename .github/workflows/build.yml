@@ -51,8 +51,8 @@ jobs:
       - name: Chmod
         run: chmod +x target/release/discrakt_amd64
 
-      - uses: uraimo/run-on-arch-action@v2
-        name: Build artifact
+      - name: Build ARM
+        uses: uraimo/run-on-arch-action@v2.1.1
         id: build
         with:
           arch: aarch64
