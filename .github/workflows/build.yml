@@ -51,35 +51,11 @@ jobs:
       - name: Chmod
         run: chmod +x target/release/discrakt_amd64
 
-      - name: Build ARM
-        uses: uraimo/run-on-arch-action@v2
-        id: build
-        with:
-          arch: aarch64
-          distro: ubuntu20.04
-          githubToken: ${{ github.token }}
+      - name: Add ARM Target
+        run: rustup target add aarch64-unknown-linux-gnu
 
-          # Create an artifacts directory
-          setup: |
-            mkdir -p "${PWD}/artifacts"
-
-          # Mount the artifacts directory as /artifacts in the container
-          dockerRunArgs: |
-            --volume "${PWD}/artifacts:/artifacts"
-
-          install: |
-            apt-get update && apt-get install -y curl
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-
-          run: |
-            cargo build --all --release --target=aarch64-unknown-linux-gnu && mv target/aarch64-unknown-linux-gnu/release/discrakt /artifacts/discrakt_arm64
-
-      # - name: Build
-      #   run: cargo build --all --release --target=aarch64-unknown-linux-gnu && mv target/aarch64-unknown-linux-gnu/release/discrakt target/release/discrakt_arm64
-
-      - name: Show the artifact
-        run: |
-          ls -al "${PWD}/artifacts"
+      - name: Build
+        run: cargo build --all --release --target=aarch64-unknown-linux-gnu && mv target/aarch64-unknown-linux-gnu/release/discrakt target/release/discrakt_arm64
 
       - name: Chmod
         run: chmod +x ${PWD}/artifacts/discrakt_arm64
