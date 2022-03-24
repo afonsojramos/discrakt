@@ -56,7 +56,7 @@ jobs:
         id: build
         with:
           arch: aarch64
-          distro: bullseye
+          distro: ubuntu20.04
           githubToken: ${{ github.token }}
 
           # Create an artifacts directory
