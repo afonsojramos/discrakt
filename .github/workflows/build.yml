@@ -63,7 +63,7 @@ jobs:
       # - name: Release
       #   uses: softprops/action-gh-release@v1
       #   with:
-      #     files: |
+      #    files: |
       #       target/release/discrakt_arm64
       #       target/release/discrakt_amd64
       #       credentials.ini
