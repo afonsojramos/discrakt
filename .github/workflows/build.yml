@@ -52,7 +52,7 @@ jobs:
         run: chmod +x target/release/discrakt_amd64
 
       - name: Build ARM
-        uses: uraimo/run-on-arch-action@v2.1.1
+        uses: uraimo/run-on-arch-action@v2
         id: build
         with:
           arch: aarch64
