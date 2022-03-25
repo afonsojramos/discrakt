@@ -56,15 +56,23 @@ jobs:
           rustup target add aarch64-unknown-linux-musl
           sudo apt-get install -y musl-tools clang llvm -y
 
-      - name: Build
-        run: cargo build --all --release --target=aarch64-unknown-linux-musl && mv target/aarch64-unknown-linux-musl/release/discrakt target/release/discrakt_arm64
-        env:
-          CC_aarch64_unknown_linux_musl: clang
-          AR_aarch64_unknown_linux_musl: llvm-ar
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-Clink-self-contained=yes -Clinker=rust-lld"
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --all --release --target=aarch64-unknown-linux-musl
+
+      # - name: Build
+      #   run: cargo build --all --release --target=aarch64-unknown-linux-musl && mv target/aarch64-unknown-linux-musl/release/discrakt target/release/discrakt_arm64
+      #   env:
+      #     CC_aarch64_unknown_linux_musl: clang
+      #     AR_aarch64_unknown_linux_musl: llvm-ar
+      #     CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-Clink-self-contained=yes -Clinker=rust-lld"
 
       - name: Chmod
-        run: chmod +x target/release/discrakt_arm64
+        run: |
+          mv target/aarch64-unknown-linux-musl/release/discrakt target/release/discrakt_arm64
+          chmod +x target/release/discrakt_arm64
 
       # - name: Release
       #   uses: softprops/action-gh-release@v1
