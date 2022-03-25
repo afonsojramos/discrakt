@@ -53,11 +53,11 @@ jobs:
 
       - name: Add ARM Target
         run: |
-          rustup target add aarch64-unknown-linux-gnu
+          rustup target add aarch64-unknown-linux-musl
           sudo apt-get install -y musl-tools clang llvm -y
 
       - name: Build
-        run: cargo build --all --release --target=aarch64-unknown-linux-gnu && mv target/aarch64-unknown-linux-gnu/release/discrakt target/release/discrakt_arm64
+        run: cargo build --all --release --target=aarch64-unknown-linux-musl && mv target/aarch64-unknown-linux-musl/release/discrakt target/release/discrakt_arm64
         env:
           CC_aarch64_unknown_linux_musl: clang
           AR_aarch64_unknown_linux_musl: llvm-ar
