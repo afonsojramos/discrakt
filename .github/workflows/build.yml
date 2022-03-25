@@ -51,10 +51,10 @@ jobs:
       - name: Chmod
         run: chmod +x target/release/discrakt_amd64
 
-      - name: Add ARM Target
-        run: |
-          rustup target add aarch64-unknown-linux-musl
-          sudo apt-get install -y musl-tools clang llvm -y
+      # - name: Add ARM Target
+      #   run: |
+      #     rustup target add aarch64-unknown-linux-musl
+      #     sudo apt-get install -y musl-tools clang llvm -y
 
       - uses: actions-rs/cargo@v1
         with:
