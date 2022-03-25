@@ -45,20 +45,28 @@ jobs:
           default: true
           override: true
 
-      - name: Build
-        run: cargo build --all --release && mv target/release/discrakt target/release/discrakt_amd64
+      - name: Build amd64
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --all --release
 
-      - name: Chmod
-        run: chmod +x target/release/discrakt_amd64
+      - name: Prepare amd64 binary
+        run: |
+          mv target/release/discrakt target/release/discrakt_amd64
+          chmod +x target/release/discrakt_amd64
 
-      - name: Add ARM Target
-        run: rustup target add aarch64-unknown-linux-gnu
+      - name: Build arm64
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --all --release --target=aarch64-unknown-linux-musl
 
-      - name: Build
-        run: cargo build --all --release --target=aarch64-unknown-linux-gnu && mv target/aarch64-unknown-linux-gnu/release/discrakt target/release/discrakt_arm64
-
-      - name: Chmod
-        run: chmod +x target/release/discrakt_arm64
+      - name: Prepare arm64 Binary
+        run: |
+          mv target/aarch64-unknown-linux-musl/release/discrakt target/release/discrakt_arm64
+          chmod +x target/release/discrakt_arm64
 
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -86,20 +94,32 @@ jobs:
           default: true
           override: true
 
-      - name: Build
-        run: cargo build --all --release && mv target/release/discrakt.exe target/release/discrakt_win64.exe
+      - name: Build win64
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --all --release
 
-      - name: Create silent executable
+      - name: Prepare win64 Binary
+        run: mv target/release/discrakt.exe target/release/discrakt_win64.exe
+
+      - name: Create silent win64 executable
         run: sed -i '1i\#\!\[windows_subsystem\ \=\ \"windows\"\]' src/main.rs
 
-      - name: Build silent executable
-        run: cargo build --all --release && mv target/release/discrakt.exe target/release/discrakt_silent_win64.exe
+      - name: Build silent win64 executable
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --all --release
+
+      - name: Prepare silent win64 Binary
+        run: mv target/release/discrakt.exe target/release/discrakt_win64_silent.exe
 
       - name: Release silent executable
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            target/release/discrakt_silent_win64.exe
+            target/release/discrakt_win64_silent.exe
             target/release/discrakt_win64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -121,20 +141,28 @@ jobs:
           default: true
           override: true
 
-      - name: Build for mac
-        run: cargo build --all --release && mv target/release/discrakt target/release/discrakt_darwin
+      - name: Build darwin
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --all --release
 
-      - name: Chmod
-        run: chmod +x target/release/discrakt_darwin
+      - name: Prepare darwin binary
+        run: |
+          mv target/release/discrakt target/release/discrakt_darwin
+          chmod +x target/release/discrakt_darwin
 
-      - name: Add ARM Target
-        run: rustup target add aarch64-apple-darwin
+      - name: Build darwin arm64
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --all --release --target=aarch64-apple-darwin
 
-      - name: Build
-        run: cargo build --all --release --target=aarch64-apple-darwin && mv target/aarch64-apple-darwin/release/discrakt target/release/discrakt_darwin_arm64
-
-      - name: Chmod
-        run: chmod +x target/release/discrakt_darwin_arm64
+      - name: Prepare darwin arm64 binary
+        run: |
+          mv target/aarch64-apple-darwin/release/discrakt target/release/discrakt_darwin_arm64
+          chmod +x target/release/discrakt_darwin_arm64
 
       - name: Release
         uses: softprops/action-gh-release@v1
