@@ -126,7 +126,7 @@ jobs:
 
   publish-mac:
     runs-on: macos-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    #if: startsWith(github.ref, 'refs/tags/')
     needs: build
 
     steps:
