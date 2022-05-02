@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use discord_rich_presence::{
     activity::{Activity, Assets, Button, Timestamps},
-    new_client, DiscordIpc,
+    DiscordIpc, DiscordIpcClient,
 };
 use std::{thread::sleep, time::Duration};
 
@@ -11,13 +11,19 @@ use crate::{
 };
 
 pub struct Discord {
-    client: Box<dyn DiscordIpc>,
+    client: DiscordIpcClient,
 }
 
 impl Discord {
-    pub fn new(discord_token: String) -> Discord {
+    pub fn new(discord_client_id: String) -> Discord {
         Discord {
-            client: Box::new(new_client(&discord_token).unwrap()),
+            client: match DiscordIpcClient::new(&discord_client_id) {
+                Ok(client) => client,
+                Err(e) => {
+                    log(&format!("Couldn't connect to Discord: {e}"));
+                    panic!("Couldn't connect to Discord");
+                }
+            },
         }
     }
 
@@ -92,7 +98,7 @@ impl Discord {
             }
         }
 
-        log(&format!("{} - {} | {}", details, state, watch_percentage));
+        log(&format!("{details} - {state} | {watch_percentage}"));
 
         let payload = Activity::new()
             .details(&details)
