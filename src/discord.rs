@@ -4,6 +4,9 @@ use discord_rich_presence::{
     DiscordIpc, DiscordIpcClient,
 };
 use std::{thread::sleep, time::Duration};
+use std::fmt::format;
+use tmdb::model::*;
+use tmdb::themoviedb::{Executable, Fetch, TMDbApi};
 
 use crate::{
     trakt::{Trakt, TraktWatchingResponse},
@@ -42,12 +45,13 @@ impl Discord {
         self.client.close().unwrap();
     }
 
-    pub fn set_activity(&mut self, trakt_response: &TraktWatchingResponse, trakt: &mut Trakt) {
+    pub fn set_activity(&mut self, trakt_response: &TraktWatchingResponse, trakt: &mut Trakt, tmdb: &dyn TMDbApi) {
         let details;
         let state;
         let media;
         let link_imdb;
         let link_trakt;
+        let tmdb_id;
         let start_date = DateTime::parse_from_rfc3339(&trakt_response.started_at).unwrap();
         let end_date = DateTime::parse_from_rfc3339(&trakt_response.expires_at).unwrap();
         let now = Utc::now();
@@ -75,6 +79,7 @@ impl Discord {
                     media,
                     movie.ids.slug.as_ref().unwrap()
                 );
+                tmdb_id = movie.ids.tmdb
             }
             "episode" if trakt_response.episode.is_some() => {
                 let episode = trakt_response.episode.as_ref().unwrap();
@@ -91,12 +96,50 @@ impl Discord {
                     media,
                     show.ids.slug.as_ref().unwrap()
                 );
+                tmdb_id = show.ids.tmdb
             }
             _ => {
                 log(&format!("Unknown media type: {}", trakt_response.r#type));
                 return;
             }
         }
+
+        let poster_path: Option<String> = match tmdb_id {
+            Some(id) => match media {
+                "movie" => {
+                    let movie = (tmdb
+                        .fetch()
+                        .id(id as u64)
+                        as &dyn Executable<Movie>)
+                        .execute();
+
+                    if movie.is_ok()  {
+                        movie.unwrap().poster_path
+                    } else { None }
+                },
+                "shows" => {
+                    let tv = (tmdb
+                        .fetch()
+                        .id(id as u64)
+                        as &dyn Executable<TV>).execute();
+
+                    if tv.is_ok()  {
+                        tv.unwrap().poster_path
+                    } else { None }
+                },
+                _ => None
+            },
+            None => None
+        };
+
+        let formatted: String;
+        let asset_media_link = match &poster_path {
+            None => media,
+            Some(poster_path) => {
+                formatted = format!("https://image.tmdb.org/t/p/original{}", poster_path);
+                &formatted[..]
+            }
+        };
 
         log(&format!("{details} - {state} | {watch_percentage}"));
 
@@ -105,7 +148,7 @@ impl Discord {
             .state(&state)
             .assets(
                 Assets::new()
-                    .large_image(media)
+                    .large_image(asset_media_link)
                     .large_text(&watch_percentage)
                     .small_image("trakt")
                     .small_text("Discrakt"),
