@@ -106,7 +106,7 @@ impl Discord {
 
         let poster_path: Option<String> = match tmdb_id {
             Some(id) => match media {
-                "movie" => {
+                "movies" => {
                     let movie = (tmdb
                         .fetch()
                         .id(id as u64)
