@@ -4,7 +4,6 @@ use discord_rich_presence::{
     DiscordIpc, DiscordIpcClient,
 };
 use std::{thread::sleep, time::Duration};
-use std::fmt::format;
 use tmdb::model::*;
 use tmdb::themoviedb::{Executable, Fetch, TMDbApi};
 
