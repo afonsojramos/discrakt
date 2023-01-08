@@ -135,7 +135,7 @@ impl Discord {
         let asset_media_link = match &poster_path {
             None => media,
             Some(poster_path) => {
-                formatted = format!("https://image.tmdb.org/t/p/original{}", poster_path);
+                formatted = format!("https://image.tmdb.org/t/p/w600_and_h600_bestv2{}", poster_path);
                 &formatted[..]
             }
         };
