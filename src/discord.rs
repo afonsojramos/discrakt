@@ -42,12 +42,13 @@ impl Discord {
         self.client.close().unwrap();
     }
 
-    pub fn set_activity(&mut self, trakt_response: &TraktWatchingResponse, trakt: &mut Trakt) {
+    pub fn set_activity(&mut self, trakt_response: &TraktWatchingResponse, trakt: &mut Trakt, tmdb_token: String) {
         let details;
         let state;
         let media;
-        let link_imdb;
-        let link_trakt;
+        let id_tmdb;
+        let season_id ;
+        let img_url;
         let start_date = DateTime::parse_from_rfc3339(&trakt_response.started_at).unwrap();
         let end_date = DateTime::parse_from_rfc3339(&trakt_response.expires_at).unwrap();
         let now = Utc::now();
@@ -62,19 +63,10 @@ impl Discord {
                 state = format!(
                     "{:.1} ⭐️",
                     Trakt::get_movie_rating(trakt, movie.ids.slug.as_ref().unwrap().to_string())
-                        .as_ref()
-                        .unwrap()
                 );
                 media = "movies";
-                link_imdb = format!(
-                    "https://www.imdb.com/title/{}",
-                    movie.ids.imdb.as_ref().unwrap()
-                );
-                link_trakt = format!(
-                    "https://trakt.tv/{}/{}",
-                    media,
-                    movie.ids.slug.as_ref().unwrap()
-                );
+                id_tmdb = movie.ids.tmdb.as_ref().unwrap();
+                img_url = trakt.get_movie_image(id_tmdb.to_string(), tmdb_token)
             }
             "episode" if trakt_response.episode.is_some() => {
                 let episode = trakt_response.episode.as_ref().unwrap();
@@ -82,15 +74,9 @@ impl Discord {
                 details = show.title.to_string();
                 state = format!("S{}E{} - {}", episode.season, episode.number, episode.title);
                 media = "shows";
-                link_imdb = format!(
-                    "https://www.imdb.com/title/{}",
-                    show.ids.imdb.as_ref().unwrap()
-                );
-                link_trakt = format!(
-                    "https://trakt.tv/{}/{}",
-                    media,
-                    show.ids.slug.as_ref().unwrap()
-                );
+                id_tmdb = show.ids.tmdb.as_ref().unwrap();
+                season_id = episode.season;
+                img_url = trakt.get_show_image(id_tmdb.to_string(), tmdb_token, season_id)
             }
             _ => {
                 log(&format!("Unknown media type: {}", trakt_response.r#type));
@@ -98,27 +84,26 @@ impl Discord {
             }
         }
 
-        log(&format!("{details} - {state} | {watch_percentage}"));
-
+        let img = match img_url {
+            Some(img) => img,
+            None => media.to_string(),
+        };
+        
         let payload = Activity::new()
             .details(&details)
             .state(&state)
             .assets(
                 Assets::new()
-                    .large_image(media)
-                    .large_text(&watch_percentage)
+                    .large_image(&img)
                     .small_image("trakt")
-                    .small_text("Discrakt"),
+                    .small_text("Trakt.tv"),
             )
             .timestamps(
                 Timestamps::new()
                     .start(start_date.timestamp())
                     .end(end_date.timestamp()),
-            )
-            .buttons(vec![
-                Button::new("IMDB", &link_imdb),
-                Button::new("Trakt", &link_trakt),
-            ]);
+            );
+        log(&format!("{details} - {state} | {watch_percentage}"));
 
         if self.client.set_activity(payload).is_err() {
             self.connect();
