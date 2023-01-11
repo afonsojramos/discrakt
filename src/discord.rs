@@ -46,6 +46,8 @@ impl Discord {
         let details;
         let state;
         let media;
+        let link_imdb;
+        let link_trakt;
         let id_tmdb;
         let season_id ;
         let img_url;
@@ -65,6 +67,15 @@ impl Discord {
                     Trakt::get_movie_rating(trakt, movie.ids.slug.as_ref().unwrap().to_string())
                 );
                 media = "movies";
+                link_imdb = format!(
+                    "https://www.imdb.com/title/{}",
+                    movie.ids.imdb.as_ref().unwrap()
+                );
+                link_trakt = format!(
+                    "https://trakt.tv/{}/{}",
+                    media,
+                    movie.ids.slug.as_ref().unwrap()
+                );
                 id_tmdb = movie.ids.tmdb.as_ref().unwrap();
                 img_url = trakt.get_movie_image(id_tmdb.to_string(), tmdb_token)
             }
@@ -74,6 +85,15 @@ impl Discord {
                 details = show.title.to_string();
                 state = format!("S{}E{} - {}", episode.season, episode.number, episode.title);
                 media = "shows";
+                link_imdb = format!(
+                    "https://www.imdb.com/title/{}",
+                    show.ids.imdb.as_ref().unwrap()
+                );
+                link_trakt = format!(
+                    "https://trakt.tv/{}/{}",
+                    media,
+                    show.ids.slug.as_ref().unwrap()
+                );
                 id_tmdb = show.ids.tmdb.as_ref().unwrap();
                 season_id = episode.season;
                 img_url = trakt.get_show_image(id_tmdb.to_string(), tmdb_token, season_id)
@@ -88,7 +108,7 @@ impl Discord {
             Some(img) => img,
             None => media.to_string(),
         };
-        
+
         let payload = Activity::new()
             .details(&details)
             .state(&state)
@@ -102,7 +122,11 @@ impl Discord {
                 Timestamps::new()
                     .start(start_date.timestamp())
                     .end(end_date.timestamp()),
-            );
+            )
+            .buttons(vec![
+                Button::new("IMDB", &link_imdb),
+                Button::new("Trakt", &link_trakt),
+            ]);
         log(&format!("{details} - {state} | {watch_percentage}"));
 
         if self.client.set_activity(payload).is_err() {
