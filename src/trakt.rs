@@ -1,8 +1,6 @@
-use regex::Regex;
 use serde::Deserialize;
 use std::{collections::HashMap, time::Duration};
 use ureq::{serde_json, Agent, AgentBuilder};
-use url::{Host, Url};
 
 use crate::utils::log;
 
