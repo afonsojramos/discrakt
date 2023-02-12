@@ -51,6 +51,14 @@ nohup ./discrakt > /dev/null &
 ### Windows
 
 You can now use the silent Windows executable, and now you only need to follow [this guide](https://support.microsoft.com/en-us/windows/add-an-app-to-run-automatically-at-startup-in-windows-10-150da165-dcd9-7230-517b-cf3c295d89dd) to run it on startup.
+  
+#### Scoop
+
+You can install discrakt in [Scoop](https://scoop.sh/) via the [Extras](https://github.com/ScoopInstaller/Extras) bucket:
+```powershell
+scoop bucket add extras # Ensure bucket is added first
+scoop install discrakt
+```
 
 ## Development
 
