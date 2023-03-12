@@ -9,7 +9,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut cfg = load_config();
     cfg.check_oauth();
     let mut discord = Discord::new(cfg.discord_token);
-    let mut trakt = Trakt::new(cfg.trakt_client_id, cfg.trakt_username, cfg.trakt_access_token);
+    let mut trakt = Trakt::new(
+        cfg.trakt_client_id,
+        cfg.trakt_username,
+        cfg.trakt_access_token,
+    );
     Discord::connect(&mut discord);
 
     loop {

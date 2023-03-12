@@ -57,7 +57,7 @@ pub struct Trakt {
     agent: Agent,
     client_id: String,
     username: String,
-    oauth_access_token: Option<String>
+    oauth_access_token: Option<String>,
 }
 
 impl Trakt {
@@ -91,8 +91,7 @@ impl Trakt {
             request
         };
 
-        let response = match request.call()
-        {
+        let response = match request.call() {
             Ok(response) => response,
             Err(_) => return None,
         };

@@ -1,4 +1,4 @@
-use std::{time::Duration, io};
+use std::{io, time::Duration};
 
 use chrono::{SecondsFormat, Utc};
 use configparser::ini::Ini;
@@ -29,7 +29,9 @@ pub struct Env {
 impl Env {
     pub fn check_oauth(&mut self) {
         if self.trakt_oauth_enabled {
-            if self.trakt_access_token.is_none() || self.trakt_access_token.as_ref().unwrap().is_empty() {
+            if self.trakt_access_token.is_none()
+                || self.trakt_access_token.as_ref().unwrap().is_empty()
+            {
                 self.authorize_app();
             } else if let Some(expires_at) = self.trakt_refresh_token_expires_at {
                 if Utc::now().timestamp() as u64 > expires_at {
@@ -54,7 +56,9 @@ impl Env {
         print!("Enter code from website: ");
         io::Write::flush(&mut io::stdout()).expect("Failed to flush stdout");
         let mut code = String::new();
-        io::stdin().read_line(&mut code).expect("Failed to read line");
+        io::stdin()
+            .read_line(&mut code)
+            .expect("Failed to read line");
         let code = code.trim();
 
         let agent = AgentBuilder::new()
@@ -84,7 +88,8 @@ impl Env {
         if let Some(json_response) = json_response {
             self.trakt_access_token = Some(json_response.access_token.clone());
             self.trakt_refresh_token = Some(json_response.refresh_token.clone());
-            self.trakt_refresh_token_expires_at = Some(json_response.created_at + 60 * 60 * 24 * 30 * 3); // secs * mins * hours * days * months => 3 months
+            self.trakt_refresh_token_expires_at =
+                Some(json_response.created_at + 60 * 60 * 24 * 30 * 3); // secs * mins * hours * days * months => 3 months
             set_oauth_tokens(&json_response);
         } else {
             eprintln!("Failed to exchange code for access token");
@@ -119,7 +124,8 @@ impl Env {
         if let Some(json_response) = json_response {
             self.trakt_access_token = Some(json_response.access_token.clone());
             self.trakt_refresh_token = Some(json_response.refresh_token.clone());
-            self.trakt_refresh_token_expires_at = Some(json_response.created_at + 60 * 60 * 24 * 30 * 3); // secs * mins * hours * days * months => 3 months
+            self.trakt_refresh_token_expires_at =
+                Some(json_response.created_at + 60 * 60 * 24 * 30 * 3); // secs * mins * hours * days * months => 3 months
             set_oauth_tokens(&json_response);
         } else {
             eprintln!("Failed to exchange refresh token for access token");
@@ -145,12 +151,9 @@ pub fn load_config() -> Env {
             .getbool("Trakt API", "enabledOAuth")
             .expect("enableOAuth not found")
             .unwrap_or(false),
-        trakt_client_secret: config
-            .get("Trakt API", "traktClientSecret"),
-        trakt_access_token: config
-            .get("Trakt API", "OAuthAccessToken"),
-        trakt_refresh_token: config
-            .get("Trakt API", "OAuthRefreshToken"),
+        trakt_client_secret: config.get("Trakt API", "traktClientSecret"),
+        trakt_access_token: config.get("Trakt API", "OAuthAccessToken"),
+        trakt_refresh_token: config.get("Trakt API", "OAuthRefreshToken"),
         trakt_refresh_token_expires_at: config
             .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
             .unwrap_or_default(),
@@ -159,11 +162,27 @@ pub fn load_config() -> Env {
 
 fn set_oauth_tokens(json_response: &TraktAccessToken) {
     let mut config = Ini::new();
-    config.load("credentials.ini").expect("Failed to load credentials.ini");
-    config.setstr("Trakt API", "OAuthAccessToken", Some(json_response.access_token.as_str()));
-    config.setstr("Trakt API", "OAuthRefreshToken", Some(json_response.refresh_token.as_str()));
-    config.set("Trakt API", "OAuthRefreshTokenExpiresAt", Some(json_response.created_at.to_string()));
-    config.write("credentials.ini").expect("Failed to write credentials.ini");
+    config
+        .load("credentials.ini")
+        .expect("Failed to load credentials.ini");
+    config.setstr(
+        "Trakt API",
+        "OAuthAccessToken",
+        Some(json_response.access_token.as_str()),
+    );
+    config.setstr(
+        "Trakt API",
+        "OAuthRefreshToken",
+        Some(json_response.refresh_token.as_str()),
+    );
+    config.set(
+        "Trakt API",
+        "OAuthRefreshTokenExpiresAt",
+        Some(json_response.created_at.to_string()),
+    );
+    config
+        .write("credentials.ini")
+        .expect("Failed to write credentials.ini");
 }
 
 pub fn log(message: &str) {
