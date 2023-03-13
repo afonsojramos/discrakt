@@ -161,7 +161,7 @@ pub fn load_config() -> Env {
 }
 
 fn set_oauth_tokens(json_response: &TraktAccessToken) {
-    let mut config = Ini::new();
+    let mut config = Ini::new_cs();
     config
         .load("credentials.ini")
         .expect("Failed to load credentials.ini");
