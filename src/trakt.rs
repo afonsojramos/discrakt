@@ -84,7 +84,9 @@ impl Trakt {
             .set("trakt-api-version", "2")
             .set("trakt-api-key", &self.client_id);
         // add Authorization header if there is a (valid) OAuth access token
-        let request = if self.oauth_access_token.is_some() {
+        let request = if self.oauth_access_token.is_some()
+            && !self.oauth_access_token.as_ref().unwrap().is_empty()
+        {
             let authorization = format!("Bearer {}", self.oauth_access_token.as_ref().unwrap());
             request.set("Authorization", &authorization)
         } else {
