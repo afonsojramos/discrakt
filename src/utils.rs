@@ -5,6 +5,7 @@ pub struct Env {
     pub discord_token: String,
     pub trakt_username: String,
     pub trakt_client_id: String,
+    pub tmdb_token: String,
 }
 
 pub fn load_config() -> Env {
@@ -21,13 +22,15 @@ pub fn load_config() -> Env {
         trakt_client_id: config
             .get("Trakt API", "traktClientID")
             .expect("traktClientID not found"),
+        tmdb_token: config
+            .get("TMDB API", "tmdbToken")
+            .expect("tmdbToken not found"),
     }
 }
 
 pub fn log(message: &str) {
     println!(
-        "{} : {}",
+        "{} : {message}",
         Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-        message
     );
 }

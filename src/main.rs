@@ -9,6 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = load_config();
     let mut discord = Discord::new(cfg.discord_token);
     let mut trakt = Trakt::new(cfg.trakt_client_id, cfg.trakt_username);
+    let tmdb_token = cfg.tmdb_token;
     Discord::connect(&mut discord);
 
     loop {
@@ -24,6 +25,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        Discord::set_activity(&mut discord, &response, &mut trakt);
+        Discord::set_activity(&mut discord, &response, &mut trakt, tmdb_token.clone());
     }
 }
