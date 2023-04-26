@@ -1,5 +1,5 @@
 use discrakt::{
-    discord::Discord,
+    discord::client::Discord,
     trakt::Trakt,
     utils::{load_config, log},
 };
