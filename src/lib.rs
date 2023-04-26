@@ -1,6 +1,3 @@
-pub mod discord {
-    pub mod client;
-    pub mod payload;
-}
+pub mod discord;
 pub mod trakt;
 pub mod utils;

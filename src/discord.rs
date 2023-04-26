@@ -5,13 +5,23 @@ use discord_rich_presence::{
 use std::{thread::sleep, time::Duration};
 
 use crate::{
-    discord::payload::Payload,
     trakt::{Trakt, TraktWatchingResponse},
     utils::{get_watch_stats, log},
 };
 
 pub struct Discord {
     client: DiscordIpcClient,
+}
+
+#[derive(Default)]
+pub struct Payload {
+    pub details: String,
+    pub state: String,
+    pub media: String,
+    pub link_imdb: String,
+    pub link_trakt: String,
+    pub img_url: String,
+    pub watch_percentage: String,
 }
 
 impl Discord {
