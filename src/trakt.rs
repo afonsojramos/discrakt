@@ -113,7 +113,7 @@ impl Trakt {
 
                 match response.into_json::<serde_json::Value>() {
                     Ok(body) => {
-                        let image_url = format!("https://image.tmdb.org/t/p/w500{}", body["posters"][0].clone().get("file_path").unwrap().as_str().unwrap());
+                        let image_url = format!("https://image.tmdb.org/t/p/w600_and_h600_bestv2{}", body["posters"][0].clone().get("file_path").unwrap().as_str().unwrap());
                         Some(image_url)
                     }
                     Err(_) => {
@@ -141,7 +141,7 @@ impl Trakt {
 
                 match response.into_json::<serde_json::Value>() {
                     Ok(body) => {
-                        let image_url = format!("https://image.tmdb.org/t/p/w500{}", body["posters"][0].clone().get("file_path").unwrap().as_str().unwrap());
+                        let image_url = format!("https://image.tmdb.org/t/p/w600_and_h600_bestv2{}", body["posters"][0].clone().get("file_path").unwrap().as_str().unwrap());
                         Some(image_url)
                     }
                     Err(_) => {
