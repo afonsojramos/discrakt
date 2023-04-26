@@ -97,7 +97,12 @@ impl Trakt {
         }
     }
 
-    pub fn get_show_image(&mut self, tmdb_id: String, tmdb_token: String, season_id: u8) -> Option<String> {
+    pub fn get_show_image(
+        &mut self,
+        tmdb_id: String,
+        tmdb_token: String,
+        season_id: u8,
+    ) -> Option<String> {
         match self.image_cache.get(&tmdb_id) {
             Some(image_url) => Some(image_url.to_string()),
             None => {
@@ -113,7 +118,15 @@ impl Trakt {
 
                 match response.into_json::<serde_json::Value>() {
                     Ok(body) => {
-                        let image_url = format!("https://image.tmdb.org/t/p/w600_and_h600_bestv2{}", body["posters"][0].clone().get("file_path").unwrap().as_str().unwrap());
+                        let image_url = format!(
+                            "https://image.tmdb.org/t/p/w600_and_h600_bestv2{}",
+                            body["posters"][0]
+                                .clone()
+                                .get("file_path")
+                                .unwrap()
+                                .as_str()
+                                .unwrap()
+                        );
                         Some(image_url)
                     }
                     Err(_) => {
@@ -124,12 +137,14 @@ impl Trakt {
             }
         }
     }
-    
+
     pub fn get_movie_image(&mut self, tmdb_id: String, tmdb_token: String) -> Option<String> {
         match self.image_cache.get(&tmdb_id) {
             Some(image_url) => Some(image_url.to_string()),
             None => {
-                let endpoint = format!("https://api.themoviedb.org/3/movie/{tmdb_id}/images?api_key={tmdb_token}");
+                let endpoint = format!(
+                    "https://api.themoviedb.org/3/movie/{tmdb_id}/images?api_key={tmdb_token}"
+                );
 
                 let response = match self.agent.get(&endpoint).call() {
                     Ok(response) => response,
@@ -141,7 +156,15 @@ impl Trakt {
 
                 match response.into_json::<serde_json::Value>() {
                     Ok(body) => {
-                        let image_url = format!("https://image.tmdb.org/t/p/w600_and_h600_bestv2{}", body["posters"][0].clone().get("file_path").unwrap().as_str().unwrap());
+                        let image_url = format!(
+                            "https://image.tmdb.org/t/p/w600_and_h600_bestv2{}",
+                            body["posters"][0]
+                                .clone()
+                                .get("file_path")
+                                .unwrap()
+                                .as_str()
+                                .unwrap()
+                        );
                         Some(image_url)
                     }
                     Err(_) => {
