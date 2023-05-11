@@ -11,23 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Repository Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Install Toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ matrix.rust-version }}
-          profile: minimal
-          override: true
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache
         uses: Swatinem/rust-cache@v1
 
-      - name: Build Binary
-        run: cargo build
-
       - name: Run Unit Tests
-        run: cargo test
+        run: |
+          cargo check
+          cargo test
 
   publish-linux:
     runs-on: ubuntu-latest
@@ -36,20 +31,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
-      - name: Install latest rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
-          override: true
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Build amd64
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --all --release
+        run: cargo build --release
 
       - name: Prepare amd64 binary
         run: |
@@ -57,26 +45,22 @@ jobs:
           chmod +x target/release/discrakt_amd64
 
       - name: Build arm64
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: true
-          command: build
-          args: --all --release --target=aarch64-unknown-linux-musl
+        run: cargo build --release --target=aarch64-unknown-linux-musl
 
       - name: Prepare arm64 Binary
         run: |
           mv target/aarch64-unknown-linux-musl/release/discrakt target/release/discrakt_arm64
           chmod +x target/release/discrakt_arm64
 
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            target/release/discrakt_arm64
-            target/release/discrakt_amd64
-            credentials.ini
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     files: |
+      #       target/release/discrakt_arm64
+      #       target/release/discrakt_amd64
+      #       credentials.ini
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-win:
     runs-on: windows-latest
@@ -85,20 +69,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
-      - name: Install latest rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
-          override: true
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Build win64
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --all --release
+        run: cargo build --release
 
       - name: Prepare win64 Binary
         run: mv target/release/discrakt.exe target/release/discrakt_win64.exe
@@ -107,22 +84,19 @@ jobs:
         run: sed -i '1i\#\!\[windows_subsystem\ \=\ \"windows\"\]' src/main.rs
 
       - name: Build silent win64 executable
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --all --release
+        run: cargo build --release
 
       - name: Prepare silent win64 Binary
         run: mv target/release/discrakt.exe target/release/discrakt_win64_silent.exe
 
-      - name: Release silent executable
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            target/release/discrakt_win64_silent.exe
-            target/release/discrakt_win64.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Release silent executable
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     files: |
+      #       target/release/discrakt_win64_silent.exe
+      #       target/release/discrakt_win64.exe
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-mac:
     runs-on: macos-latest
@@ -131,38 +105,23 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
-      - name: Install latest rust toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: x86_64-apple-darwin
-          override: true
+          targets: "aarch64-apple-darwin, x86_64-apple-darwin"
 
       - name: Build darwin
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --all --release --target=x86_64-apple-darwin
+        run: cargo build --release --target=x86_64-apple-darwin
 
       - name: Prepare darwin binary
         run: |
-          mv target/release/discrakt target/release/discrakt_darwin
+          mv target/x86_64-apple-darwin/release/discrakt target/release/discrakt_darwin
           chmod +x target/release/discrakt_darwin
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: aarch64-apple-darwin
-          override: true
-
       - name: Build darwin arm64
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: true
-          command: build
-          args: --all --release --target=aarch64-apple-darwin
+        run: cargo build --release --target=aarch64-apple-darwin
 
       - name: Prepare darwin arm64 binary
         run: |
