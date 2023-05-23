@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cfg.trakt_username,
         cfg.trakt_access_token,
     );
+    let tmdb_token = cfg.tmdb_token;
     Discord::connect(&mut discord);
 
     loop {
@@ -29,6 +30,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        Discord::set_activity(&mut discord, &response, &mut trakt);
+        Discord::set_activity(&mut discord, &response, &mut trakt, tmdb_token.clone());
     }
 }

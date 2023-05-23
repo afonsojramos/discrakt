@@ -1,8 +1,7 @@
-use std::{io, time::Duration};
-
-use chrono::{SecondsFormat, Utc};
+use chrono::{DateTime, FixedOffset, SecondsFormat, Utc};
 use configparser::ini::Ini;
 use serde::Deserialize;
+use std::{io, time::Duration};
 use ureq::AgentBuilder;
 
 #[derive(Deserialize)]
@@ -15,6 +14,8 @@ pub struct TraktAccessToken {
     pub created_at: u64,
 }
 
+use crate::trakt::TraktWatchingResponse;
+
 pub struct Env {
     pub discord_token: String,
     pub trakt_username: String,
@@ -24,6 +25,13 @@ pub struct Env {
     pub trakt_access_token: Option<String>,
     pub trakt_refresh_token: Option<String>,
     pub trakt_refresh_token_expires_at: Option<u64>,
+    pub tmdb_token: String,
+}
+
+pub struct WatchStats {
+    pub watch_percentage: String,
+    pub start_date: DateTime<FixedOffset>,
+    pub end_date: DateTime<FixedOffset>,
 }
 
 impl Env {
@@ -157,6 +165,9 @@ pub fn load_config() -> Env {
         trakt_refresh_token_expires_at: config
             .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
             .unwrap_or_default(),
+        tmdb_token: config
+            .get("TMDB API", "tmdbToken")
+            .expect("tmdbToken not found"),
     }
 }
 
@@ -187,8 +198,21 @@ fn set_oauth_tokens(json_response: &TraktAccessToken) {
 
 pub fn log(message: &str) {
     println!(
-        "{} : {}",
+        "{} : {message}",
         Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-        message
     );
+}
+
+pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {
+    let start_date = DateTime::parse_from_rfc3339(&trakt_response.started_at).unwrap();
+    let end_date = DateTime::parse_from_rfc3339(&trakt_response.expires_at).unwrap();
+    let percentage = Utc::now().signed_duration_since(start_date).num_seconds() as f32
+        / end_date.signed_duration_since(start_date).num_seconds() as f32;
+    let watch_percentage = format!("{:.2}%", percentage * 100.0);
+
+    WatchStats {
+        watch_percentage,
+        start_date,
+        end_date,
+    }
 }

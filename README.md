@@ -26,10 +26,12 @@ Plex Rich Presence alternatives:
 
 ## Setup
 
-1. Create an API Application on [Trakt.tv](https://trakt.tv/oauth/applications/new) (with scrobble capabilities and `urn:ietf:wg:oauth:2.0:oob` as the redirect uri) and an Application on [Discord](https://discord.com/developers/applications).
-2. Edit the `credentials.ini` file with the required API keys (Cliend IDs) and Trakt username.
-3. In the [Discord Developer Dashboard](https://discord.com/developers/applications), within your application and under **Rich Presence** -> **Art Assets**, upload the application images, either the ones located in `/images` or ones that you choose to submit (as long as the keys for those images stay `shows` and `movies`).
-4. Run the respective executable, and you're ready to start sharing your progress!
+1. Create an API Application on [Trakt.tv](https://trakt.tv/oauth/applications/new) (with scrobble capabilities and `urn:ietf:wg:oauth:2.0:oob` as the redirect uri) 
+2. Create an API Application on [Discord](https://discord.com/developers/applications). 
+2. Create an API Application on [themoviedb.org](https://www.themoviedb.org/documentation/api).
+3. Edit the `credentials.ini` file with the required API keys (Cliend IDs) and Trakt username.
+4. In the [Discord Developer Dashboard](https://discord.com/developers/applications), within your application and under **Rich Presence** -> **Art Assets**, upload the application images, either the ones located in `/images` or ones that you choose to submit (as long as the keys for those images stay `shows` and `movies`).
+5. Run the respective executable, and you're ready to start sharing your progress!
 
 *P.S.* Discord needs to be running on the machine Discrakt is running on. 
 
