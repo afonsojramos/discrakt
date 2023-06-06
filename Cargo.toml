@@ -20,7 +20,7 @@ discord-rich-presence = "0.2.0"
 ureq = { version = "2.4.0", features = ["json"] }
 configparser = "3.0.0"
 serde = { version = "1.0.163", features = ["derive"] }
-chrono = "0.4.19"
+chrono = "0.4.26"
 
 [profile.release]
 strip = "debuginfo"
