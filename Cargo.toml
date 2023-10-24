@@ -19,7 +19,7 @@ exclude = [
 discord-rich-presence = "0.2.0"
 ureq = { version = "2.4.0", features = ["json"] }
 configparser = { version = "3.0.2", features = ["indexmap"] }
-serde = { version = "1.0.136", features = ["derive"] }
+serde = { version = "1.0.163", features = ["derive"] }
 chrono = "0.4.19"
 webbrowser = "0.8.7"
 
