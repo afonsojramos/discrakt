@@ -17,11 +17,24 @@ jobs:
       - name: Cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Check workflow permissions
+        id: check_permissions
+        uses: scherermichael-oss/action-has-permission@1.0.6
+        with:
+          required-permission: write
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run clippy
+        if: ${{ steps.check_permissions.outputs.has-permission }}
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: -- -D clippy::all
+
+      - name: Run clippy without annotations
+        if: ${{ !steps.check_permissions.outputs.has-permission }}
+        run: cargo clippy --all-features --all-targets -- -D warnings
 
   rustfmt:
     name: Format
