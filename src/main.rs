@@ -6,9 +6,14 @@ use discrakt::{
 use std::{thread::sleep, time::Duration};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = load_config();
+    let mut cfg = load_config();
+    cfg.check_oauth();
     let mut discord = Discord::new(cfg.discord_token);
-    let mut trakt = Trakt::new(cfg.trakt_client_id, cfg.trakt_username);
+    let mut trakt = Trakt::new(
+        cfg.trakt_client_id,
+        cfg.trakt_username,
+        cfg.trakt_access_token,
+    );
     let tmdb_token = cfg.tmdb_token;
     Discord::connect(&mut discord);
 

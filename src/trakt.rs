@@ -60,10 +60,11 @@ pub struct Trakt {
     agent: Agent,
     client_id: String,
     username: String,
+    oauth_access_token: Option<String>,
 }
 
 impl Trakt {
-    pub fn new(client_id: String, username: String) -> Trakt {
+    pub fn new(client_id: String, username: String, oauth_access_token: Option<String>) -> Trakt {
         Trakt {
             rating_cache: HashMap::default(),
             image_cache: HashMap::default(),
@@ -73,20 +74,30 @@ impl Trakt {
                 .build(),
             client_id,
             username,
+            oauth_access_token,
         }
     }
 
     pub fn get_watching(&self) -> Option<TraktWatchingResponse> {
         let endpoint = format!("https://api.trakt.tv/users/{}/watching", self.username);
 
-        let response = match self
+        let request = self
             .agent
             .get(&endpoint)
             .set("Content-Type", "application/json")
             .set("trakt-api-version", "2")
-            .set("trakt-api-key", &self.client_id)
-            .call()
+            .set("trakt-api-key", &self.client_id);
+        // add Authorization header if there is a (valid) OAuth access token
+        let request = if self.oauth_access_token.is_some()
+            && !self.oauth_access_token.as_ref().unwrap().is_empty()
         {
+            let authorization = format!("Bearer {}", self.oauth_access_token.as_ref().unwrap());
+            request.set("Authorization", &authorization)
+        } else {
+            request
+        };
+
+        let response = match request.call() {
             Ok(response) => response,
             Err(_) => return None,
         };
