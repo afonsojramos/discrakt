@@ -44,6 +44,7 @@ jobs:
         run: |
           gh release upload ${{ github.ref_name }} target/release/discrakt_arm64
           gh release upload ${{ github.ref_name }} target/release/discrakt_amd64
+          gh release upload ${{ github.ref_name }} credentials.ini
 
   publish-win:
     runs-on: windows-latest
