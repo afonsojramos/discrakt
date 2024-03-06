@@ -8,7 +8,7 @@ use std::{thread::sleep, time::Duration};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut cfg = load_config();
     cfg.check_oauth();
-    let mut discord = Discord::new(cfg.discord_token);
+    let mut discord = Discord::new(cfg.discord_client_id);
     let mut trakt = Trakt::new(
         cfg.trakt_client_id,
         cfg.trakt_username,

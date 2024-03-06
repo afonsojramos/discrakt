@@ -17,7 +17,7 @@ pub struct TraktAccessToken {
 use crate::trakt::TraktWatchingResponse;
 
 pub struct Env {
-    pub discord_token: String,
+    pub discord_client_id: String,
     pub trakt_username: String,
     pub trakt_client_id: String,
     pub trakt_oauth_enabled: bool,
@@ -146,9 +146,7 @@ pub fn load_config() -> Env {
     config.load("credentials.ini").unwrap();
 
     Env {
-        discord_token: config
-            .get("Discord", "discordClientID")
-            .expect("discordClientID not found"),
+        discord_client_id: "826189107046121572".to_string(),
         trakt_username: config
             .get("Trakt API", "traktUser")
             .expect("traktUser not found"),
