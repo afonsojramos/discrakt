@@ -3,7 +3,6 @@ name: Release
 on:
   release:
     types: [created]
-  push:
 
 jobs:
   publish-linux:
@@ -40,7 +39,6 @@ jobs:
           chmod +x target/release/discrakt_arm64
 
       - name: Upload binaries
-        if: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -73,7 +71,6 @@ jobs:
         run: mv target/release/discrakt.exe target/release/discrakt_win64_silent.exe
 
       - name: Upload binaries
-        if: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -109,7 +106,6 @@ jobs:
           chmod +x target/release/discrakt_darwin_arm64
 
       - name: Upload binaries
-        if: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
