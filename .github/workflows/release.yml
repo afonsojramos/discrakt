@@ -29,7 +29,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} target/release/discrakt_arm64
           gh release upload ${{ github.ref_name }} target/release/discrakt_amd64
 
   publish-linux-arm:
@@ -38,6 +37,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Cross Compilers
+        run: brew install filosottile/musl-cross/musl-cross
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -58,7 +60,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ github.ref_name }} target/release/discrakt_arm64
-          gh release upload ${{ github.ref_name }} target/release/discrakt_amd64
 
   publish-win:
     runs-on: windows-latest
