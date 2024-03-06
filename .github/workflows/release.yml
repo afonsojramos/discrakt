@@ -27,7 +27,9 @@ jobs:
           chmod +x target/release/discrakt_amd64
 
       - name: Install compiler tools (as we're cross-compiling)
-        run: sudo apt install -y gcc-aarch64-linux-gnu
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-aarch64-linux-gnu
 
       - name: Build arm64
         run: cargo build --release --target=aarch64-unknown-linux-gnu
