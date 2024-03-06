@@ -14,6 +14,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: "aarch64-unknown-linux-gnu, x86_64-unknown-linux-musl"
 
       - name: Build amd64
         run: cargo build --release
@@ -23,12 +25,17 @@ jobs:
           mv target/release/discrakt target/release/discrakt_amd64
           chmod +x target/release/discrakt_amd64
 
+      - name: Install compiler tools (as we're cross-compiling)
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-aarch64-linux-gnu
+
       - name: Build arm64
-        run: cargo build --release --target=aarch64-unknown-linux-musl
+        run: cargo build --release --target=aarch64-unknown-linux-gnu
 
       - name: Prepare arm64 Binary
         run: |
-          mv target/aarch64-unknown-linux-musl/release/discrakt target/release/discrakt_arm64
+          mv target/aarch64-unknown-linux-gnu/release/discrakt target/release/discrakt_arm64
           chmod +x target/release/discrakt_arm64
 
       - name: Upload binaries
@@ -71,7 +78,7 @@ jobs:
           gh release upload ${{ github.ref_name }} target/release/discrakt_win64.exe
 
   publish-mac:
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
       - name: Checkout
