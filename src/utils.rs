@@ -143,7 +143,8 @@ impl Env {
 
 pub fn load_config() -> Env {
     let mut config = Ini::new();
-    let mut path = env::current_dir().unwrap();
+    let mut path = env::current_exe().unwrap();
+    path.pop();
     path.push("credentials.ini");
 
     config.load(path).expect("Failed to load credentials.ini");
@@ -174,10 +175,13 @@ pub fn load_config() -> Env {
 
 fn set_oauth_tokens(json_response: &TraktAccessToken) {
     let mut config = Ini::new_cs();
-    let mut path = env::current_dir().unwrap();
+    let mut path = env::current_exe().unwrap();
+    path.pop();
     path.push("credentials.ini");
 
-    config.load(path).expect("Failed to load credentials.ini");
+    config
+        .load(path.clone())
+        .expect("Failed to load credentials.ini");
     config.setstr(
         "Trakt API",
         "OAuthAccessToken",
@@ -193,9 +197,7 @@ fn set_oauth_tokens(json_response: &TraktAccessToken) {
         "OAuthRefreshTokenExpiresAt",
         Some(json_response.created_at.to_string()),
     );
-    config
-        .write("credentials.ini")
-        .expect("Failed to write credentials.ini");
+    config.write(path).expect("Failed to write credentials.ini");
 }
 
 pub fn log(message: &str) {
