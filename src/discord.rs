@@ -120,7 +120,7 @@ impl Discord {
                 Assets::new()
                     .large_image(&img)
                     .small_image("trakt")
-                    .small_text("Trakt.tv"),
+                    .small_text("Discrakt"),
             )
             .timestamps(
                 Timestamps::new()
