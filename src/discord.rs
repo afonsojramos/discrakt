@@ -6,7 +6,7 @@ use std::{thread::sleep, time::Duration};
 
 use crate::{
     trakt::{Trakt, TraktWatchingResponse},
-    utils::{get_watch_stats, log},
+    utils::{get_watch_stats, log, MediaType},
 };
 
 pub struct Discord {
@@ -79,7 +79,8 @@ impl Discord {
                     movie.ids.slug.as_ref().unwrap()
                 );
                 let id_tmdb = movie.ids.tmdb.as_ref().unwrap();
-                trakt.get_movie_image(id_tmdb.to_string(), tmdb_token)
+
+                trakt.get_poster(MediaType::Movie, id_tmdb.to_string(), tmdb_token, 0)
             }
             "episode" if trakt_response.episode.is_some() => {
                 let episode = trakt_response.episode.as_ref().unwrap();
@@ -98,7 +99,13 @@ impl Discord {
                     show.ids.slug.as_ref().unwrap()
                 );
                 let id_tmdb = show.ids.tmdb.as_ref().unwrap();
-                trakt.get_show_image(id_tmdb.to_string(), tmdb_token, episode.season)
+
+                trakt.get_poster(
+                    MediaType::Show,
+                    id_tmdb.to_string(),
+                    tmdb_token,
+                    episode.season,
+                )
             }
             _ => {
                 log(&format!("Unknown media type: {}", trakt_response.r#type));
