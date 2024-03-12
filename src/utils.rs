@@ -1,7 +1,7 @@
 use chrono::{DateTime, FixedOffset, SecondsFormat, Utc};
 use configparser::ini::Ini;
 use serde::Deserialize;
-use std::{io, time::Duration};
+use std::{env, io, time::Duration};
 use ureq::AgentBuilder;
 
 #[derive(Deserialize)]
@@ -143,7 +143,11 @@ impl Env {
 
 pub fn load_config() -> Env {
     let mut config = Ini::new();
-    config.load("credentials.ini").unwrap();
+    let mut path = env::current_exe().unwrap();
+    path.pop();
+    path.push("credentials.ini");
+
+    config.load(path).expect("Failed to load credentials.ini");
 
     Env {
         discord_client_id: "826189107046121572".to_string(),
@@ -171,8 +175,12 @@ pub fn load_config() -> Env {
 
 fn set_oauth_tokens(json_response: &TraktAccessToken) {
     let mut config = Ini::new_cs();
+    let mut path = env::current_exe().unwrap();
+    path.pop();
+    path.push("credentials.ini");
+
     config
-        .load("credentials.ini")
+        .load(path.clone())
         .expect("Failed to load credentials.ini");
     config.setstr(
         "Trakt API",
@@ -189,9 +197,7 @@ fn set_oauth_tokens(json_response: &TraktAccessToken) {
         "OAuthRefreshTokenExpiresAt",
         Some(json_response.created_at.to_string()),
     );
-    config
-        .write("credentials.ini")
-        .expect("Failed to write credentials.ini");
+    config.write(path).expect("Failed to write credentials.ini");
 }
 
 pub fn log(message: &str) {

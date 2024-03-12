@@ -32,7 +32,8 @@ Plex Rich Presence alternatives:
 4. In the [Discord Developer Dashboard](https://discord.com/developers/applications), within your application and under **Rich Presence** -> **Art Assets**, upload the application images, either the ones located in `/images` or ones that you choose to submit (as long as the keys for those images stay `shows` and `movies`).
 5. Run the respective executable, and you're ready to start sharing your progress!
 
-*P.S.* Discord needs to be running on the machine Discrakt is running on. 
+*P.S.* Discord needs to be running on the machine Discrakt is running on.
+*P.P.S.* Place the `credentials.ini` file in the same directory as the executable.
 
 ## Running executables
 
@@ -55,7 +56,7 @@ You can now use the silent Windows executable, and now you only need to follow [
   
 #### Scoop
 
-You can install discrakt in [Scoop](https://scoop.sh/) via the [Extras](https://github.com/ScoopInstaller/Extras) bucket:
+You can install Discrakt in [Scoop](https://scoop.sh/) via the [Extras](https://github.com/ScoopInstaller/Extras) bucket:
 ```powershell
 scoop bucket add extras # Ensure bucket is added first
 scoop install discrakt
