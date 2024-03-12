@@ -167,9 +167,7 @@ pub fn load_config() -> Env {
         trakt_refresh_token_expires_at: config
             .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
             .unwrap_or_default(),
-        tmdb_token: config
-            .get("TMDB API", "tmdbToken")
-            .expect("tmdbToken not found"),
+        tmdb_token: "21b815a75fec5f1e707e3da1b9b2d7e3".to_string(),
     }
 }
 
