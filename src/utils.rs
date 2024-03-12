@@ -214,3 +214,17 @@ pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {
         end_date,
     }
 }
+
+pub enum MediaType {
+    Show,
+    Movie,
+}
+
+impl MediaType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MediaType::Show => "episode",
+            MediaType::Movie => "movie",
+        }
+    }
+}

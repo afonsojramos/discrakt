@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::{collections::HashMap, time::Duration};
 use ureq::{serde_json, Agent, AgentBuilder};
 
-use crate::utils::log;
+use crate::utils::{log, MediaType};
 
 #[derive(Deserialize)]
 pub struct TraktMovie {
@@ -108,8 +108,9 @@ impl Trakt {
         }
     }
 
-    pub fn get_show_image(
+    pub fn get_poster(
         &mut self,
+        media_type: MediaType,
         tmdb_id: String,
         tmdb_token: String,
         season_id: u8,
@@ -117,18 +118,24 @@ impl Trakt {
         match self.image_cache.get(&tmdb_id) {
             Some(image_url) => Some(image_url.to_string()),
             None => {
-                let endpoint = format!("https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_id}/images?api_key={tmdb_token}");
-
-                let response = match self.agent.get(&endpoint).call() {
-                    Ok(response) => response,
-                    Err(_) => {
-                        log("Failed to get image from tmdb-api");
-                        return None;
-                    }
+                let endpoint = match media_type {
+                    MediaType::Movie => format!("https://api.themoviedb.org/3/movie/{tmdb_id}/images?api_key={tmdb_token}"),
+                    MediaType::Show => format!("https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_id}/images?api_key={tmdb_token}")
                 };
+
+                let response = self
+                    .agent
+                    .get(&endpoint)
+                    .call()
+                    .expect("TMDB API call failed");
 
                 match response.into_json::<serde_json::Value>() {
                     Ok(body) => {
+                        if body["posters"].as_array().unwrap_or(&vec![]).is_empty() {
+                            log("Show image not correctly found");
+                            return None;
+                        }
+
                         let image_url = format!(
                             "https://image.tmdb.org/t/p/w600_and_h600_bestv2{}",
                             body["posters"][0]
@@ -141,45 +148,10 @@ impl Trakt {
                         Some(image_url)
                     }
                     Err(_) => {
-                        log("Show image not correctly found");
-                        None
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn get_movie_image(&mut self, tmdb_id: String, tmdb_token: String) -> Option<String> {
-        match self.image_cache.get(&tmdb_id) {
-            Some(image_url) => Some(image_url.to_string()),
-            None => {
-                let endpoint = format!(
-                    "https://api.themoviedb.org/3/movie/{tmdb_id}/images?api_key={tmdb_token}"
-                );
-
-                let response = match self.agent.get(&endpoint).call() {
-                    Ok(response) => response,
-                    Err(_) => {
-                        log("Failed to get image from tmdb-api");
-                        return None;
-                    }
-                };
-
-                match response.into_json::<serde_json::Value>() {
-                    Ok(body) => {
-                        let image_url = format!(
-                            "https://image.tmdb.org/t/p/w600_and_h600_bestv2{}",
-                            body["posters"][0]
-                                .clone()
-                                .get("file_path")
-                                .unwrap()
-                                .as_str()
-                                .unwrap()
-                        );
-                        Some(image_url)
-                    }
-                    Err(_) => {
-                        log("Movie image not correctly found");
+                        log(&format!(
+                            "{} image not correctly found",
+                            media_type.as_str()
+                        ));
                         None
                     }
                 }
