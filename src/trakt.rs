@@ -131,7 +131,7 @@ impl Trakt {
 
                 match response.into_json::<serde_json::Value>() {
                     Ok(body) => {
-                        if body["posters"].as_array().unwrap_or(&vec![]).len() == 0 {
+                        if body["posters"].as_array().unwrap_or(&vec![]).is_empty() {
                             log("Show image not correctly found");
                             return None;
                         }
