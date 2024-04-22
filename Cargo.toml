@@ -15,7 +15,7 @@ discord-rich-presence = "0.2.3"
 ureq = { version = "2.9.6", features = ["json"] }
 configparser = { version = "3.0.2", features = ["indexmap"] }
 serde = { version = "1.0.197", features = ["derive"] }
-chrono = "0.4.37"
+chrono = "0.4.38"
 webbrowser = "0.8.15"
 
 [profile.release]
