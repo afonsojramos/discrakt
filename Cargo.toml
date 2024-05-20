@@ -11,7 +11,7 @@ readme = "README.md"
 exclude = [".github/*", "images/*.psd", "credentials.ini", ".gitignore"]
 
 [dependencies]
-discord-rich-presence = "0.2.3"
+discord-rich-presence = "0.2.4"
 ureq = { version = "2.9.7", features = ["json"] }
 configparser = { version = "3.0.2", features = ["indexmap"] }
 serde = { version = "1.0.201", features = ["derive"] }
