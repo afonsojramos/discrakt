@@ -17,6 +17,7 @@ configparser = { version = "3.1.0", features = ["indexmap"] }
 serde = { version = "1.0.204", features = ["derive"] }
 chrono = "0.4.38"
 webbrowser = "1.0.1"
+dirs = "5.0.1"
 
 [profile.release]
 strip = "debuginfo"

@@ -1,7 +1,7 @@
 use chrono::{DateTime, FixedOffset, SecondsFormat, Utc};
 use configparser::ini::Ini;
 use serde::Deserialize;
-use std::{env, io, time::Duration};
+use std::{env, io, path::PathBuf, time::Duration};
 use ureq::AgentBuilder;
 
 #[derive(Deserialize)]
@@ -141,12 +141,34 @@ impl Env {
     }
 }
 
+fn find_config_file() -> Option<PathBuf> {
+    let xdg_config_path = dirs::config_local_dir().unwrap().join("discrakt");
+    let mut exe_path = env::current_exe().unwrap();
+    exe_path.pop();
+
+    let locations = vec![xdg_config_path, exe_path];
+
+    for location in &locations {
+        let config_file = location.join("credentials.ini");
+        if config_file.exists() {
+            return Some(config_file);
+        }
+    }
+    eprintln!(
+        "Could not find credentials.ini in {:?}",
+        locations
+            .iter()
+            .map(|loc| loc.to_str().to_owned().unwrap())
+            .collect::<Vec<_>>()
+    );
+    None
+}
+
 pub fn load_config() -> Env {
     let mut config = Ini::new();
-    let mut path = env::current_exe().unwrap();
-    path.pop();
-    path.push("credentials.ini");
+    let config_file = find_config_file();
 
+    let path = config_file.expect("Could not find credentials.ini");
     config.load(path).expect("Failed to load credentials.ini");
 
     Env {
@@ -173,9 +195,9 @@ pub fn load_config() -> Env {
 
 fn set_oauth_tokens(json_response: &TraktAccessToken) {
     let mut config = Ini::new_cs();
-    let mut path = env::current_exe().unwrap();
-    path.pop();
-    path.push("credentials.ini");
+    let config_file = find_config_file();
+
+    let path = config_file.expect("Could not find credentials.ini");
 
     config
         .load(path.clone())
