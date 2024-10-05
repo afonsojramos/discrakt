@@ -1,5 +1,5 @@
 use discord_rich_presence::{
-    activity::{Activity, Assets, Button, Timestamps},
+    activity::{Activity, ActivityType, Assets, Button, Timestamps},
     DiscordIpc, DiscordIpcClient,
 };
 use std::{thread::sleep, time::Duration};
@@ -123,6 +123,7 @@ impl Discord {
         let payload = Activity::new()
             .details(&payload_data.details)
             .state(&payload_data.state)
+            .activity_type(ActivityType::Watching)
             .assets(
                 Assets::new()
                     .large_image(&img)
