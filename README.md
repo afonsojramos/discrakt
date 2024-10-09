@@ -33,6 +33,14 @@ Plex Rich Presence alternatives:
 *P.S.* Discord needs to be running on the machine Discrakt is running on.
 *P.P.S.* Place the `credentials.ini` file in the same directory as the executable.
 
+*P.P.P.S.* If you want to store the configuration in a common location, the `credentials.ini` can also be stored in:
+
+|Operating System|Location|Example|
+|--------|-----|-------|
+|Linux|`$XDG_CONFIG_HOME`/discrakt or `$HOME`/.config/discrakt|/home/alice/.config/discrakt/credentials.ini|
+|macOS|`$HOME`/Library/Application Support/discrakt|/Users/Alice/Library/Application Support/discrakt/credentials.ini|
+|Windows|`%APPDATA%`\discrakt|C:\Users\Alice\AppData\Roaming\discrakt\credentials.ini|
+
 ## Running executables
 
 Running the executables is as easy as clicking the provided executables in the latest [release](https://github.com/afonsojramos/discrakt/releases). That's it!
