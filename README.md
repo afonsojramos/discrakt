@@ -39,7 +39,7 @@ Plex Rich Presence alternatives:
 |--------|-----|-------|
 |Linux|`$XDG_CONFIG_HOME`/discrakt or `$HOME`/.config/discrakt|/home/alice/.config/discrakt/credentials.ini|
 |macOS|`$HOME`/Library/Application Support/discrakt|/Users/Alice/Library/Application Support/discrakt/credentials.ini|
-|Windows|`%LOCALAPPDATA%`\discrakt|C:\Users\Alice\AppData\Roaming\discrakt\credentials.ini|
+|Windows|`%APPDATA%`\discrakt|C:\Users\Alice\AppData\Roaming\discrakt\credentials.ini|
 
 ## Running executables
 

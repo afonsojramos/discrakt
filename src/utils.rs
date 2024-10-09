@@ -142,7 +142,7 @@ impl Env {
 }
 
 fn find_config_file() -> Option<PathBuf> {
-    let config_path = dirs::config_local_dir().unwrap().join("discrakt");
+    let config_path = dirs::config_dir().unwrap().join("discrakt");
     let mut exe_path = env::current_exe().unwrap();
     exe_path.pop();
 
