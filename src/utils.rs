@@ -88,10 +88,7 @@ impl Env {
             Err(_) => return,
         };
 
-        let json_response: Option<TraktAccessToken> = match response.into_json() {
-            Ok(body) => body,
-            Err(_) => None,
-        };
+        let json_response: Option<TraktAccessToken> = response.into_json().unwrap_or_default();
 
         if let Some(json_response) = json_response {
             self.trakt_access_token = Some(json_response.access_token.clone());
@@ -124,10 +121,7 @@ impl Env {
             Err(_) => return,
         };
 
-        let json_response: Option<TraktAccessToken> = match response.into_json() {
-            Ok(body) => body,
-            Err(_) => None,
-        };
+        let json_response: Option<TraktAccessToken> = response.into_json().unwrap_or_default();
 
         if let Some(json_response) = json_response {
             self.trakt_access_token = Some(json_response.access_token.clone());
