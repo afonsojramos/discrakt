@@ -142,11 +142,11 @@ impl Env {
 }
 
 fn find_config_file() -> Option<PathBuf> {
-    let xdg_config_path = dirs::config_local_dir().unwrap().join("discrakt");
+    let config_path = dirs::config_local_dir().unwrap().join("discrakt");
     let mut exe_path = env::current_exe().unwrap();
     exe_path.pop();
 
-    let locations = vec![xdg_config_path, exe_path];
+    let locations = vec![config_path, exe_path];
 
     for location in &locations {
         let config_file = location.join("credentials.ini");
