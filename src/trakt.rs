@@ -102,10 +102,7 @@ impl Trakt {
             Err(_) => return None,
         };
 
-        match response.into_json() {
-            Ok(body) => body,
-            Err(_) => None,
-        }
+        response.into_json().unwrap_or_default()
     }
 
     pub fn get_poster(
