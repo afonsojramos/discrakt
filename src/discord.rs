@@ -86,8 +86,10 @@ impl Discord {
                 let episode = trakt_response.episode.as_ref().unwrap();
                 let show = trakt_response.show.as_ref().unwrap();
                 payload_data.details = show.title.to_string();
-                payload_data.state =
-                    format!("S{}E{} - {}", episode.season, episode.number, episode.title);
+                payload_data.state = format!(
+                    "S{:02}E{:02} - {}",
+                    episode.season, episode.number, episode.title
+                );
                 payload_data.media = String::from("shows");
                 payload_data.link_imdb = format!(
                     "https://www.imdb.com/title/{}",
