@@ -120,13 +120,17 @@ impl Trakt {
                     MediaType::Show => format!("https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_id}/images?api_key={tmdb_token}")
                 };
 
-                let response = self
-                    .agent
-                    .get(&endpoint)
-                    .call()
-                    .expect("TMDB API call failed");
+                let response = self.agent.get(&endpoint).call();
 
-                match response.into_json::<serde_json::Value>() {
+                if response.is_err() {
+                    log(&format!(
+                        "{} image not correctly found",
+                        media_type.as_str()
+                    ));
+                    return None;
+                }
+
+                match response.unwrap().into_json::<serde_json::Value>() {
                     Ok(body) => {
                         if body["posters"].as_array().unwrap_or(&vec![]).is_empty() {
                             log("Show image not correctly found");
