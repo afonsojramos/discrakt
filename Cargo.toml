@@ -14,7 +14,7 @@ exclude = [".github/*", "images/*.psd", "credentials.ini", ".gitignore"]
 discord-rich-presence = "0.2.5"
 ureq = { version = "2.12.1", features = ["json"] }
 configparser = { version = "3.1.0", features = ["indexmap"] }
-serde = { version = "1.0.216", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
 chrono = "0.4.40"
 webbrowser = "1.0.4"
 dirs = "5.0.1"
