@@ -36,24 +36,39 @@ pub struct WatchStats {
 
 impl Env {
     pub fn check_oauth(&mut self) {
-        if self.trakt_oauth_enabled {
-            if self.trakt_access_token.is_none()
-                || self.trakt_access_token.as_ref().unwrap().is_empty()
-            {
+        if !self.trakt_oauth_enabled {
+            return;
+        }
+
+        // Check if we have no access token
+        if self.trakt_access_token.is_none() || self.trakt_access_token.as_ref().unwrap().is_empty() {
+            log("No OAuth access token found, starting authorization flow");
+            self.authorize_app();
+            return;
+        }
+
+        // Check if the refresh token is expired (this is what you were originally checking)
+        if let Some(refresh_expires_at) = self.trakt_refresh_token_expires_at {
+            let now = Utc::now().timestamp() as u64;
+            if now >= refresh_expires_at {
+                log("OAuth refresh token has expired, need to reauthorize");
                 self.authorize_app();
-            } else if let Some(expires_at) = self.trakt_refresh_token_expires_at {
-                if Utc::now().timestamp() as u64 > expires_at {
-                    self.exchange_refresh_token_for_access_token();
-                }
+            } else {
+                // Try to refresh the access token proactively
+                log("Refresh token is still valid, refreshing access token");
+                self.exchange_refresh_token_for_access_token();
             }
+        } else {
+            log("No refresh token expiry time found, unable to determine if refresh token is valid");
         }
     }
 
     fn authorize_app(&mut self) {
+        log("Opening browser for OAuth authorization");
         if webbrowser::open(
             &format!("https://trakt.tv/oauth/authorize?response_type=code&client_id={}&redirect_uri=urn:ietf:wg:oauth:2.0:oob", self.trakt_client_id)
         ).is_err() {
-            eprintln!("Failed to open webbrowser to authorize discrakt");
+            log("Failed to open webbrowser to authorize discrakt");
             return;
         };
         self.exchange_code_for_access_token();
@@ -69,10 +84,13 @@ impl Env {
             .expect("Failed to read line");
         let code = code.trim();
 
+        log("Exchanging authorization code for access token");
+
         let agent = AgentBuilder::new()
             .timeout_read(Duration::from_secs(5))
             .timeout_write(Duration::from_secs(5))
             .build();
+
         let response = match agent
             .post("https://api.trakt.tv/oauth/token")
             .set("Content-Type", "application/json")
@@ -85,32 +103,64 @@ impl Env {
             }))
         {
             Ok(response) => response,
-            Err(_) => return,
+            Err(ureq::Error::Status(code, response)) => {
+                log(&format!("Failed to exchange authorization code: HTTP {}", code));
+                if let Ok(error_body) = response.into_string() {
+                    log(&format!("Error details: {}", error_body));
+                }
+                return;
+            }
+            Err(e) => {
+                log(&format!("Network error during token exchange: {}", e));
+                return;
+            }
         };
 
         let json_response: Option<TraktAccessToken> = response.into_json().unwrap_or_default();
 
         if let Some(json_response) = json_response {
+            log("Successfully obtained OAuth tokens");
             self.trakt_access_token = Some(json_response.access_token.clone());
             self.trakt_refresh_token = Some(json_response.refresh_token.clone());
-            self.trakt_refresh_token_expires_at =
-                Some(json_response.created_at + 60 * 60 * 24 * 30 * 3); // secs * mins * hours * days * months => 3 months
+
+            // Calculate refresh token expiry (3 months from now)
+            let now = Utc::now().timestamp() as u64;
+            self.trakt_refresh_token_expires_at = Some(now + 60 * 60 * 24 * 30 * 3); // 3 months
+
             set_oauth_tokens(&json_response);
+
+            log(&format!("Tokens obtained successfully, refresh token expires at: {}",
+                         DateTime::from_timestamp(self.trakt_refresh_token_expires_at.unwrap() as i64, 0)
+                             .unwrap()
+                             .to_rfc3339_opts(SecondsFormat::Secs, true)
+            ));
         } else {
-            eprintln!("Failed to exchange code for access token");
+            log("Failed to parse token response from Trakt API");
         }
     }
 
     fn exchange_refresh_token_for_access_token(&mut self) {
+        let refresh_token = match &self.trakt_refresh_token {
+            Some(token) if !token.is_empty() => token.clone(),
+            _ => {
+                log("No refresh token available, need to reauthorize");
+                self.authorize_app();
+                return;
+            }
+        };
+
+        log("Attempting to refresh OAuth access token");
+
         let agent = AgentBuilder::new()
             .timeout_read(Duration::from_secs(5))
             .timeout_write(Duration::from_secs(5))
             .build();
+
         let response = match agent
             .post("https://api.trakt.tv/oauth/token")
             .set("Content-Type", "application/json")
             .send_json(ureq::json!({
-                "code": "Get the code from the webbrowser",
+                "refresh_token": refresh_token,
                 "client_id": self.trakt_client_id,
                 "client_secret": self.trakt_client_secret.as_ref().expect("client_secret not found"),
                 "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
@@ -118,19 +168,49 @@ impl Env {
             }))
         {
             Ok(response) => response,
-            Err(_) => return,
+            Err(ureq::Error::Status(400, response)) => {
+                log("Refresh token is invalid or expired, need to reauthorize");
+                if let Ok(error_body) = response.into_string() {
+                    log(&format!("Error details: {}", error_body));
+                }
+                self.authorize_app();
+                return;
+            }
+            Err(ureq::Error::Status(code, response)) => {
+                log(&format!("Failed to refresh token: HTTP {}", code));
+                if let Ok(error_body) = response.into_string() {
+                    log(&format!("Error details: {}", error_body));
+                }
+                return;
+            }
+            Err(e) => {
+                log(&format!("Network error during token refresh: {}", e));
+                return;
+            }
         };
 
         let json_response: Option<TraktAccessToken> = response.into_json().unwrap_or_default();
 
         if let Some(json_response) = json_response {
+            log("Successfully refreshed OAuth access token");
             self.trakt_access_token = Some(json_response.access_token.clone());
             self.trakt_refresh_token = Some(json_response.refresh_token.clone());
-            self.trakt_refresh_token_expires_at =
-                Some(json_response.created_at + 60 * 60 * 24 * 30 * 3); // secs * mins * hours * days * months => 3 months
+
+            // Calculate refresh token expiry (3 months from now)
+            let now = Utc::now().timestamp() as u64;
+            self.trakt_refresh_token_expires_at = Some(now + 60 * 60 * 24 * 30 * 3); // 3 months
+
             set_oauth_tokens(&json_response);
+
+            log(&format!("Token refreshed successfully, new refresh token expires at: {}",
+                         DateTime::from_timestamp(self.trakt_refresh_token_expires_at.unwrap() as i64, 0)
+                             .unwrap()
+                             .to_rfc3339_opts(SecondsFormat::Secs, true)
+            ));
         } else {
-            eprintln!("Failed to exchange refresh token for access token");
+            log("Failed to parse refresh token response from Trakt API");
+            log("Will attempt full reauthorization");
+            self.authorize_app();
         }
     }
 }
@@ -148,13 +228,13 @@ fn find_config_file() -> Option<PathBuf> {
             return Some(config_file);
         }
     }
-    eprintln!(
+    log(&format!(
         "Could not find credentials.ini in {:?}",
         locations
             .iter()
             .map(|loc| loc.to_str().to_owned().unwrap())
             .collect::<Vec<_>>()
-    );
+    ));
     None
 }
 
