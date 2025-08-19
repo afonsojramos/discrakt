@@ -41,7 +41,8 @@ impl Env {
         }
 
         // Check if we have no access token
-        if self.trakt_access_token.is_none() || self.trakt_access_token.as_ref().unwrap().is_empty() {
+        if self.trakt_access_token.is_none() || self.trakt_access_token.as_ref().unwrap().is_empty()
+        {
             log("No OAuth access token found, starting authorization flow");
             self.authorize_app();
             return;
@@ -59,7 +60,9 @@ impl Env {
                 self.exchange_refresh_token_for_access_token();
             }
         } else {
-            log("No refresh token expiry time found, unable to determine if refresh token is valid");
+            log(
+                "No refresh token expiry time found, unable to determine if refresh token is valid",
+            );
         }
     }
 
@@ -129,10 +132,11 @@ impl Env {
 
             set_oauth_tokens(&json_response);
 
-            log(&format!("Tokens obtained successfully, refresh token expires at: {}",
-                         DateTime::from_timestamp(self.trakt_refresh_token_expires_at.unwrap() as i64, 0)
-                             .unwrap()
-                             .to_rfc3339_opts(SecondsFormat::Secs, true)
+            log(&format!(
+                "Tokens obtained successfully, refresh token expires at: {}",
+                DateTime::from_timestamp(self.trakt_refresh_token_expires_at.unwrap() as i64, 0)
+                    .unwrap()
+                    .to_rfc3339_opts(SecondsFormat::Secs, true)
             ));
         } else {
             log("Failed to parse token response from Trakt API");
@@ -202,10 +206,11 @@ impl Env {
 
             set_oauth_tokens(&json_response);
 
-            log(&format!("Token refreshed successfully, new refresh token expires at: {}",
-                         DateTime::from_timestamp(self.trakt_refresh_token_expires_at.unwrap() as i64, 0)
-                             .unwrap()
-                             .to_rfc3339_opts(SecondsFormat::Secs, true)
+            log(&format!(
+                "Token refreshed successfully, new refresh token expires at: {}",
+                DateTime::from_timestamp(self.trakt_refresh_token_expires_at.unwrap() as i64, 0)
+                    .unwrap()
+                    .to_rfc3339_opts(SecondsFormat::Secs, true)
             ));
         } else {
             log("Failed to parse refresh token response from Trakt API");

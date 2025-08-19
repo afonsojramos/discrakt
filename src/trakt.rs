@@ -82,14 +82,25 @@ impl Trakt {
         match status_code {
             401 => {
                 if self.oauth_access_token.is_some() {
-                    log(&format!("OAuth token expired or invalid for endpoint: {}", endpoint));
-                    log("Please refresh your OAuth token to continue using authenticated endpoints");
+                    log(&format!(
+                        "OAuth token expired or invalid for endpoint: {}",
+                        endpoint
+                    ));
+                    log(
+                        "Please refresh your OAuth token to continue using authenticated endpoints",
+                    );
                 } else {
-                    log(&format!("Authentication required for endpoint: {}", endpoint));
+                    log(&format!(
+                        "Authentication required for endpoint: {}",
+                        endpoint
+                    ));
                 }
             }
             403 => {
-                log(&format!("Access forbidden for endpoint: {} - check token permissions", endpoint));
+                log(&format!(
+                    "Access forbidden for endpoint: {} - check token permissions",
+                    endpoint
+                ));
             }
             _ => {}
         }
@@ -148,11 +159,18 @@ impl Trakt {
                 let response = match self.agent.get(&endpoint).call() {
                     Ok(response) => response,
                     Err(ureq::Error::Status(401, _)) => {
-                        log(&format!("TMDB API key expired or invalid for endpoint: {}", endpoint));
+                        log(&format!(
+                            "TMDB API key expired or invalid for endpoint: {}",
+                            endpoint
+                        ));
                         return None;
                     }
                     Err(e) => {
-                        log(&format!("Error fetching {} image: {}", media_type.as_str(), e));
+                        log(&format!(
+                            "Error fetching {} image: {}",
+                            media_type.as_str(),
+                            e
+                        ));
                         return None;
                     }
                 };
@@ -160,7 +178,10 @@ impl Trakt {
                 match response.into_json::<serde_json::Value>() {
                     Ok(body) => {
                         if body["posters"].as_array().unwrap_or(&vec![]).is_empty() {
-                            log(&format!("{} image not found in TMDB response", media_type.as_str()));
+                            log(&format!(
+                                "{} image not found in TMDB response",
+                                media_type.as_str()
+                            ));
                             return None;
                         }
 
@@ -179,7 +200,11 @@ impl Trakt {
                         Some(image_url)
                     }
                     Err(e) => {
-                        log(&format!("Failed to parse {} image response: {}", media_type.as_str(), e));
+                        log(&format!(
+                            "Failed to parse {} image response: {}",
+                            media_type.as_str(),
+                            e
+                        ));
                         None
                     }
                 }
