@@ -78,6 +78,34 @@ impl Trakt {
         }
     }
 
+    fn handle_auth_error(&self, status_code: u16, endpoint: &str) {
+        match status_code {
+            401 => {
+                if self.oauth_access_token.is_some() {
+                    log(&format!(
+                        "OAuth token expired or invalid for endpoint: {}",
+                        endpoint
+                    ));
+                    log(
+                        "Please refresh your OAuth token to continue using authenticated endpoints",
+                    );
+                } else {
+                    log(&format!(
+                        "Authentication required for endpoint: {}",
+                        endpoint
+                    ));
+                }
+            }
+            403 => {
+                log(&format!(
+                    "Access forbidden for endpoint: {} - check token permissions",
+                    endpoint
+                ));
+            }
+            _ => {}
+        }
+    }
+
     pub fn get_watching(&self) -> Option<TraktWatchingResponse> {
         let endpoint = format!("https://api.trakt.tv/users/{}/watching", self.username);
 
@@ -87,6 +115,7 @@ impl Trakt {
             .set("Content-Type", "application/json")
             .set("trakt-api-version", "2")
             .set("trakt-api-key", &self.client_id);
+
         // add Authorization header if there is a (valid) OAuth access token
         let request = if self.oauth_access_token.is_some()
             && !self.oauth_access_token.as_ref().unwrap().is_empty()
@@ -99,7 +128,14 @@ impl Trakt {
 
         let response = match request.call() {
             Ok(response) => response,
-            Err(_) => return None,
+            Err(ureq::Error::Status(code, _)) => {
+                self.handle_auth_error(code, &endpoint);
+                return None;
+            }
+            Err(e) => {
+                log(&format!("Network error calling {}: {}", endpoint, e));
+                return None;
+            }
         };
 
         response.into_json().unwrap_or_default()
@@ -120,20 +156,32 @@ impl Trakt {
                     MediaType::Show => format!("https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_id}/images?api_key={tmdb_token}")
                 };
 
-                let response = self.agent.get(&endpoint).call();
+                let response = match self.agent.get(&endpoint).call() {
+                    Ok(response) => response,
+                    Err(ureq::Error::Status(401, _)) => {
+                        log(&format!(
+                            "TMDB API key expired or invalid for endpoint: {}",
+                            endpoint
+                        ));
+                        return None;
+                    }
+                    Err(e) => {
+                        log(&format!(
+                            "Error fetching {} image: {}",
+                            media_type.as_str(),
+                            e
+                        ));
+                        return None;
+                    }
+                };
 
-                if response.is_err() {
-                    log(&format!(
-                        "{} image not correctly found",
-                        media_type.as_str()
-                    ));
-                    return None;
-                }
-
-                match response.unwrap().into_json::<serde_json::Value>() {
+                match response.into_json::<serde_json::Value>() {
                     Ok(body) => {
                         if body["posters"].as_array().unwrap_or(&vec![]).is_empty() {
-                            log("Show image not correctly found");
+                            log(&format!(
+                                "{} image not found in TMDB response",
+                                media_type.as_str()
+                            ));
                             return None;
                         }
 
@@ -146,12 +194,16 @@ impl Trakt {
                                 .as_str()
                                 .unwrap()
                         );
+
+                        // Cache the image URL
+                        self.image_cache.insert(tmdb_id, image_url.clone());
                         Some(image_url)
                     }
-                    Err(_) => {
+                    Err(e) => {
                         log(&format!(
-                            "{} image not correctly found",
-                            media_type.as_str()
+                            "Failed to parse {} image response: {}",
+                            media_type.as_str(),
+                            e
                         ));
                         None
                     }
@@ -175,7 +227,14 @@ impl Trakt {
                     .call()
                 {
                     Ok(response) => response,
-                    Err(_) => return 0.0,
+                    Err(ureq::Error::Status(code, _)) => {
+                        self.handle_auth_error(code, &endpoint);
+                        return 0.0;
+                    }
+                    Err(e) => {
+                        log(&format!("Network error fetching movie rating: {}", e));
+                        return 0.0;
+                    }
                 };
 
                 match response.into_json::<TraktRatingsResponse>() {
@@ -184,7 +243,10 @@ impl Trakt {
                             .insert(movie_slug.to_string(), body.rating);
                         body.rating
                     }
-                    Err(_) => 0.0,
+                    Err(e) => {
+                        log(&format!("Failed to parse movie rating response: {}", e));
+                        0.0
+                    }
                 }
             }
         }
