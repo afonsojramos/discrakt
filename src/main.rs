@@ -19,6 +19,7 @@ use std::{
     thread,
     time::Duration,
 };
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -37,6 +38,20 @@ fn hide_dock_icon() {
 
 #[cfg(not(target_os = "macos"))]
 fn hide_dock_icon() {}
+
+fn init_logging() {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let console_layer = fmt::layer()
+        .with_target(true)
+        .with_level(true)
+        .with_thread_names(true);
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(console_layer)
+        .init();
+}
 
 struct App {
     tray: Option<Tray>,
@@ -73,6 +88,7 @@ impl ApplicationHandler for App {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    init_logging();
     let mut cfg = load_config();
     cfg.check_oauth();
 
