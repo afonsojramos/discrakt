@@ -4,7 +4,9 @@ use serde::Deserialize;
 use std::{env, io, path::PathBuf, time::Duration};
 use ureq::AgentBuilder;
 
-#[derive(Deserialize)]
+const REFRESH_TOKEN_TTL_SECS: u64 = 60 * 60 * 24 * 30 * 3; // 3 months
+
+#[derive(Deserialize, Debug)]
 pub struct TraktAccessToken {
     pub access_token: String,
     pub token_type: String,
@@ -32,6 +34,10 @@ pub struct WatchStats {
     pub watch_percentage: String,
     pub start_date: DateTime<FixedOffset>,
     pub end_date: DateTime<FixedOffset>,
+}
+
+pub fn log(message: &str) {
+    tracing::info!("{}", message);
 }
 
 impl Env {
@@ -126,9 +132,7 @@ impl Env {
             self.trakt_access_token = Some(json_response.access_token.clone());
             self.trakt_refresh_token = Some(json_response.refresh_token.clone());
 
-            // Calculate refresh token expiry (3 months from now)
-            let now = Utc::now().timestamp() as u64;
-            self.trakt_refresh_token_expires_at = Some(now + 60 * 60 * 24 * 30 * 3); // 3 months
+            tracing::debug!("Response: {:?}", json_response);
 
             set_oauth_tokens(&json_response);
 
@@ -291,19 +295,17 @@ fn set_oauth_tokens(json_response: &TraktAccessToken) {
         "OAuthRefreshToken",
         Some(json_response.refresh_token.as_str()),
     );
+
+    // Store refresh token expiry as now + 3 months
+    let now = Utc::now().timestamp() as u64;
+    let refresh_token_expires_at = now + REFRESH_TOKEN_TTL_SECS;
+
     config.set(
         "Trakt API",
         "OAuthRefreshTokenExpiresAt",
-        Some(json_response.created_at.to_string()),
+        Some(refresh_token_expires_at.to_string()),
     );
     config.write(path).expect("Failed to write credentials.ini");
-}
-
-pub fn log(message: &str) {
-    println!(
-        "{} : {message}",
-        Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-    );
 }
 
 pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {
