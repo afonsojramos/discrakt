@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::{collections::HashMap, time::Duration};
 use ureq::{serde_json, Agent, AgentBuilder};
 
-use crate::utils::{log, MediaType};
+use crate::utils::{log, user_agent, MediaType};
 
 #[derive(Deserialize)]
 pub struct TraktMovie {
@@ -71,6 +71,7 @@ impl Trakt {
             agent: AgentBuilder::new()
                 .timeout_read(Duration::from_secs(5))
                 .timeout_write(Duration::from_secs(5))
+                .user_agent(&user_agent())
                 .build(),
             client_id,
             username,
@@ -114,7 +115,8 @@ impl Trakt {
             .get(&endpoint)
             .set("Content-Type", "application/json")
             .set("trakt-api-version", "2")
-            .set("trakt-api-key", &self.client_id);
+            .set("trakt-api-key", &self.client_id)
+            .set("User-Agent", &user_agent());
 
         // add Authorization header if there is a (valid) OAuth access token
         let request = if self.oauth_access_token.is_some()
