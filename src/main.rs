@@ -117,10 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Check if paused from shared state
-            let is_paused = app_state_clone
-                .read()
-                .map(|s| s.is_paused)
-                .unwrap_or(false);
+            let is_paused = app_state_clone.read().map(|s| s.is_paused).unwrap_or(false);
 
             if is_paused {
                 Discord::close(&mut discord);
@@ -156,7 +153,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let episode = response.episode.as_ref().unwrap();
                         (
                             show.title.clone(),
-                            format!("S{:02}E{:02} - {}", episode.season, episode.number, episode.title),
+                            format!(
+                                "S{:02}E{:02} - {}",
+                                episode.season, episode.number, episode.title
+                            ),
                         )
                     }
                     _ => ("Unknown".to_string(), "".to_string()),

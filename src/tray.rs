@@ -79,7 +79,9 @@ impl Tray {
             let status = state.status_text();
             if status != self.last_status {
                 self.status_item.set_text(&status);
-                let _ = self.tray_icon.set_tooltip(Some(&format!("Discrakt: {}", status)));
+                let _ = self
+                    .tray_icon
+                    .set_tooltip(Some(&format!("Discrakt: {}", status)));
                 self.last_status = status;
             }
         }
