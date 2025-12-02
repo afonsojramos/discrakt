@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::{collections::HashMap, time::Duration};
 use ureq::{serde_json, Agent, AgentBuilder};
 
-use crate::utils::{log, MediaType};
+use crate::utils::MediaType;
 
 #[derive(Deserialize)]
 pub struct TraktMovie {
@@ -82,25 +82,25 @@ impl Trakt {
         match status_code {
             401 => {
                 if self.oauth_access_token.is_some() {
-                    log(&format!(
-                        "OAuth token expired or invalid for endpoint: {}",
-                        endpoint
-                    ));
-                    log(
-                        "Please refresh your OAuth token to continue using authenticated endpoints",
+                    tracing::error!(
+                        endpoint = %endpoint,
+                        "OAuth token expired or invalid"
+                    );
+                    tracing::warn!(
+                        "Please refresh your OAuth token to continue using authenticated endpoints"
                     );
                 } else {
-                    log(&format!(
-                        "Authentication required for endpoint: {}",
-                        endpoint
-                    ));
+                    tracing::error!(
+                        endpoint = %endpoint,
+                        "Authentication required"
+                    );
                 }
             }
             403 => {
-                log(&format!(
-                    "Access forbidden for endpoint: {} - check token permissions",
-                    endpoint
-                ));
+                tracing::error!(
+                    endpoint = %endpoint,
+                    "Access forbidden - check token permissions"
+                );
             }
             _ => {}
         }
@@ -133,7 +133,7 @@ impl Trakt {
                 return None;
             }
             Err(e) => {
-                log(&format!("Network error calling {}: {}", endpoint, e));
+                tracing::error!(endpoint = %endpoint, error = %e, "Network error calling Trakt API");
                 return None;
             }
         };
@@ -159,18 +159,18 @@ impl Trakt {
                 let response = match self.agent.get(&endpoint).call() {
                     Ok(response) => response,
                     Err(ureq::Error::Status(401, _)) => {
-                        log(&format!(
-                            "TMDB API key expired or invalid for endpoint: {}",
-                            endpoint
-                        ));
+                        tracing::error!(
+                            endpoint = %endpoint,
+                            "TMDB API key expired or invalid"
+                        );
                         return None;
                     }
                     Err(e) => {
-                        log(&format!(
-                            "Error fetching {} image: {}",
-                            media_type.as_str(),
-                            e
-                        ));
+                        tracing::error!(
+                            media_type = %media_type.as_str(),
+                            error = %e,
+                            "Error fetching image"
+                        );
                         return None;
                     }
                 };
@@ -178,10 +178,10 @@ impl Trakt {
                 match response.into_json::<serde_json::Value>() {
                     Ok(body) => {
                         if body["posters"].as_array().unwrap_or(&vec![]).is_empty() {
-                            log(&format!(
-                                "{} image not found in TMDB response",
-                                media_type.as_str()
-                            ));
+                            tracing::warn!(
+                                media_type = %media_type.as_str(),
+                                "Image not found in TMDB response"
+                            );
                             return None;
                         }
 
@@ -200,11 +200,11 @@ impl Trakt {
                         Some(image_url)
                     }
                     Err(e) => {
-                        log(&format!(
-                            "Failed to parse {} image response: {}",
-                            media_type.as_str(),
-                            e
-                        ));
+                        tracing::error!(
+                            media_type = %media_type.as_str(),
+                            error = %e,
+                            "Failed to parse image response"
+                        );
                         None
                     }
                 }
@@ -232,7 +232,7 @@ impl Trakt {
                         return 0.0;
                     }
                     Err(e) => {
-                        log(&format!("Network error fetching movie rating: {}", e));
+                        tracing::error!(error = %e, "Network error fetching movie rating");
                         return 0.0;
                     }
                 };
@@ -244,7 +244,7 @@ impl Trakt {
                         body.rating
                     }
                     Err(e) => {
-                        log(&format!("Failed to parse movie rating response: {}", e));
+                        tracing::error!(error = %e, "Failed to parse movie rating response");
                         0.0
                     }
                 }

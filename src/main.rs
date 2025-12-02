@@ -9,7 +9,7 @@ use discrakt::{
     state::AppState,
     trakt::Trakt,
     tray::{Tray, TrayCommand},
-    utils::{get_watch_stats, load_config, log},
+    utils::{get_watch_stats, load_config},
 };
 use std::{
     sync::{
@@ -109,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut discord = match Discord::new(discord_client_id) {
             Ok(d) => d,
             Err(e) => {
-                log(&format!("Failed to create Discord client: {e}"));
+                tracing::error!("Failed to create Discord client: {e}");
                 return;
             }
         };
@@ -146,7 +146,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let response = match Trakt::get_watching(&trakt) {
                 Some(response) => response,
                 None => {
-                    log("Nothing is being played");
+                    tracing::debug!("Nothing is being played");
                     // Update state: nothing playing
                     if let Ok(mut state) = app_state_clone.write() {
                         state.clear_watching();
@@ -187,7 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         Discord::close(&mut discord);
-        log("Polling thread stopped");
+        tracing::info!("Polling thread stopped");
     });
 
     // Create event loop - must be done on main thread
@@ -200,7 +200,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tray after event loop is created
     let tray = Tray::new()?;
 
-    log("Discrakt is running in the system tray");
+    tracing::info!("Discrakt is running in the system tray");
 
     let mut app = App {
         tray: Some(tray),
@@ -215,6 +215,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     should_quit.store(true, Ordering::Relaxed);
     polling_handle.join().expect("Polling thread panicked");
 
-    log("Discrakt exited gracefully");
+    tracing::info!("Discrakt exited gracefully");
     Ok(())
 }
