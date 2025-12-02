@@ -25,16 +25,12 @@ pub struct Payload {
 }
 
 impl Discord {
-    pub fn new(discord_client_id: String) -> Discord {
-        Discord {
-            client: match DiscordIpcClient::new(&discord_client_id) {
-                Ok(client) => client,
-                Err(e) => {
-                    log(&format!("Couldn't connect to Discord: {e}"));
-                    panic!("Couldn't connect to Discord");
-                }
-            },
-        }
+    pub fn new(discord_client_id: String) -> Result<Discord, Box<dyn std::error::Error>> {
+        let client = DiscordIpcClient::new(&discord_client_id).map_err(|e| {
+            log(&format!("Couldn't create Discord client: {e}"));
+            e
+        })?;
+        Ok(Discord { client })
     }
 
     pub fn connect(&mut self) {
@@ -49,7 +45,7 @@ impl Discord {
     }
 
     pub fn close(&mut self) {
-        self.client.close().unwrap();
+        let _ = self.client.close();
     }
 
     pub fn set_activity(
