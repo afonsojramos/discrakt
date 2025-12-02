@@ -57,17 +57,14 @@ impl ApplicationHandler for App {
             // Update tray status from shared state
             tray.update_status(&self.app_state);
 
-            if let Some(command) = tray.poll_events() {
+            if let Some(command) = tray.poll_events(&self.app_state) {
                 match command {
                     TrayCommand::Quit => {
                         self.should_quit.store(true, Ordering::Relaxed);
                         event_loop.exit();
                     }
                     TrayCommand::TogglePause => {
-                        let paused = tray.is_paused();
-                        if let Ok(mut state) = self.app_state.write() {
-                            state.set_paused(paused);
-                        }
+                        // State is already updated in poll_events
                     }
                 }
             }
@@ -93,7 +90,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Spawn background polling thread
     let polling_handle = thread::spawn(move || {
-        let mut discord = Discord::new(discord_client_id);
+        let mut discord = match Discord::new(discord_client_id) {
+            Ok(d) => d,
+            Err(e) => {
+                log(&format!("Failed to create Discord client: {e}"));
+                return;
+            }
+        };
         let mut trakt = Trakt::new(trakt_client_id, trakt_username, trakt_access_token);
 
         Discord::connect(&mut discord);

@@ -20,7 +20,6 @@ pub struct Tray {
     pause_item_id: tray_icon::menu::MenuId,
     pause_item: MenuItem,
     status_item: MenuItem,
-    is_paused: bool,
     last_status: String,
 }
 
@@ -60,7 +59,6 @@ impl Tray {
             pause_item_id,
             pause_item,
             status_item,
-            is_paused: false,
             last_status: String::new(),
         })
     }
@@ -87,27 +85,26 @@ impl Tray {
         }
     }
 
-    pub fn poll_events(&mut self) -> Option<TrayCommand> {
+    pub fn poll_events(&mut self, state: &Arc<RwLock<AppState>>) -> Option<TrayCommand> {
         if let Ok(event) = self.menu_receiver.try_recv() {
             if event.id == self.quit_item_id {
                 log("Quit requested from tray menu");
                 return Some(TrayCommand::Quit);
             } else if event.id == self.pause_item_id {
-                self.is_paused = !self.is_paused;
-                if self.is_paused {
-                    self.pause_item.set_text("Resume");
-                    log("Paused from tray menu");
-                } else {
-                    self.pause_item.set_text("Pause");
-                    log("Resumed from tray menu");
+                if let Ok(mut app_state) = state.write() {
+                    let new_paused = !app_state.is_paused;
+                    app_state.set_paused(new_paused);
+                    if new_paused {
+                        self.pause_item.set_text("Resume");
+                        log("Paused from tray menu");
+                    } else {
+                        self.pause_item.set_text("Pause");
+                        log("Resumed from tray menu");
+                    }
                 }
                 return Some(TrayCommand::TogglePause);
             }
         }
         None
-    }
-
-    pub fn is_paused(&self) -> bool {
-        self.is_paused
     }
 }

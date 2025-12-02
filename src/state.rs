@@ -5,7 +5,6 @@ pub struct AppState {
     pub current_watching: Option<WatchingInfo>,
     pub discord_connected: bool,
     pub is_paused: bool,
-    pub last_error: Option<String>,
 }
 
 #[derive(Clone)]
@@ -38,10 +37,6 @@ impl AppState {
 
     pub fn set_paused(&mut self, paused: bool) {
         self.is_paused = paused;
-    }
-
-    pub fn set_error(&mut self, error: Option<String>) {
-        self.last_error = error;
     }
 
     pub fn status_text(&self) -> String {

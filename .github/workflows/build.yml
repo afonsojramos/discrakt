@@ -7,7 +7,7 @@ jobs:
     name: Build
     strategy:
       matrix:
-        rust-version: ["1.59", "stable"]
+        rust-version: ["1.70", "stable"]
     runs-on: ubuntu-latest
     steps:
       - name: Repository Checkout
