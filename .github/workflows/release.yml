@@ -22,26 +22,122 @@ jobs:
         with:
           targets: "aarch64-unknown-linux-gnu, x86_64-unknown-linux-musl"
 
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y libgtk-3-dev libappindicator3-dev libxdo-dev
+
+      - name: Install packaging tools
+        run: cargo install cargo-deb cargo-generate-rpm
+
       - name: Build amd64
         run: cargo build --release
 
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build amd64 .deb package
+        run: cargo deb --no-build
+
+      - name: Rename amd64 .deb
+        run: |
+          mv target/debian/discrakt_${{ steps.version.outputs.VERSION }}-1_amd64.deb \
+             target/debian/discrakt_${{ steps.version.outputs.VERSION }}_amd64.deb
+
       - name: Prepare amd64 binary
         run: |
-          mv target/release/discrakt target/release/discrakt_amd64
+          cp target/release/discrakt target/release/discrakt_amd64
           chmod +x target/release/discrakt_amd64
 
       - name: Install compiler tools (as we're cross-compiling)
-        run: |
-          sudo apt update
-          sudo apt install -y gcc-aarch64-linux-gnu
+        run: sudo apt install -y gcc-aarch64-linux-gnu
 
       - name: Build arm64
         run: cargo build --release --target=aarch64-unknown-linux-gnu
 
-      - name: Prepare arm64 Binary
+      - name: Prepare arm64 binary
         run: |
-          mv target/aarch64-unknown-linux-gnu/release/discrakt target/release/discrakt_arm64
+          cp target/aarch64-unknown-linux-gnu/release/discrakt target/release/discrakt_arm64
           chmod +x target/release/discrakt_arm64
+
+      - name: Build arm64 .deb package
+        run: cargo deb --no-build --target=aarch64-unknown-linux-gnu
+
+      - name: Rename arm64 .deb
+        run: |
+          mv target/aarch64-unknown-linux-gnu/debian/discrakt_${{ steps.version.outputs.VERSION }}-1_arm64.deb \
+             target/debian/discrakt_${{ steps.version.outputs.VERSION }}_arm64.deb
+
+      - name: Build amd64 .rpm package
+        run: cargo generate-rpm
+
+      - name: Rename amd64 .rpm
+        run: |
+          mv target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}-1.x86_64.rpm \
+             target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.x86_64.rpm
+
+      - name: Build arm64 .rpm package
+        run: cargo generate-rpm --target=aarch64-unknown-linux-gnu
+
+      - name: Rename arm64 .rpm
+        run: |
+          mkdir -p target/generate-rpm
+          mv target/aarch64-unknown-linux-gnu/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}-1.aarch64.rpm \
+             target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.aarch64.rpm
+
+      - name: Build amd64 AppImage
+        run: |
+          mkdir -p target/appimage/Discrakt.AppDir/usr/bin
+          mkdir -p target/appimage/Discrakt.AppDir/usr/share/applications
+          mkdir -p target/appimage/Discrakt.AppDir/usr/share/icons/hicolor/256x256/apps
+
+          cp target/release/discrakt target/appimage/Discrakt.AppDir/usr/bin/
+          cp assets/discrakt.desktop target/appimage/Discrakt.AppDir/usr/share/applications/
+          cp assets/discrakt.desktop target/appimage/Discrakt.AppDir/
+          cp assets/Discrakt.iconset/icon_256x256.png target/appimage/Discrakt.AppDir/usr/share/icons/hicolor/256x256/apps/discrakt.png
+          cp assets/Discrakt.iconset/icon_256x256.png target/appimage/Discrakt.AppDir/discrakt.png
+
+          cat > target/appimage/Discrakt.AppDir/AppRun << 'APPRUN'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          exec "${HERE}/usr/bin/discrakt" "$@"
+          APPRUN
+          sed -i 's/^          //' target/appimage/Discrakt.AppDir/AppRun
+          chmod +x target/appimage/Discrakt.AppDir/AppRun
+
+          wget -q https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool target/appimage/Discrakt.AppDir target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-x86_64.AppImage
+
+      - name: Build arm64 AppImage
+        run: |
+          rm -rf target/appimage/Discrakt.AppDir
+          mkdir -p target/appimage/Discrakt.AppDir/usr/bin
+          mkdir -p target/appimage/Discrakt.AppDir/usr/share/applications
+          mkdir -p target/appimage/Discrakt.AppDir/usr/share/icons/hicolor/256x256/apps
+
+          cp target/aarch64-unknown-linux-gnu/release/discrakt target/appimage/Discrakt.AppDir/usr/bin/
+          cp assets/discrakt.desktop target/appimage/Discrakt.AppDir/usr/share/applications/
+          cp assets/discrakt.desktop target/appimage/Discrakt.AppDir/
+          cp assets/Discrakt.iconset/icon_256x256.png target/appimage/Discrakt.AppDir/usr/share/icons/hicolor/256x256/apps/discrakt.png
+          cp assets/Discrakt.iconset/icon_256x256.png target/appimage/Discrakt.AppDir/discrakt.png
+
+          cat > target/appimage/Discrakt.AppDir/AppRun << 'APPRUN'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          exec "${HERE}/usr/bin/discrakt" "$@"
+          APPRUN
+          sed -i 's/^          //' target/appimage/Discrakt.AppDir/AppRun
+          chmod +x target/appimage/Discrakt.AppDir/AppRun
+
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/13/runtime-aarch64 -O runtime-aarch64
+          ARCH=aarch64 ./appimagetool --runtime-file runtime-aarch64 target/appimage/Discrakt.AppDir target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-aarch64.AppImage
 
       - name: Upload binaries
         env:
@@ -49,6 +145,12 @@ jobs:
         run: |
           gh release upload ${{ github.ref_name }} target/release/discrakt_arm64
           gh release upload ${{ github.ref_name }} target/release/discrakt_amd64
+          gh release upload ${{ github.ref_name }} target/debian/discrakt_${{ steps.version.outputs.VERSION }}_amd64.deb
+          gh release upload ${{ github.ref_name }} target/debian/discrakt_${{ steps.version.outputs.VERSION }}_arm64.deb
+          gh release upload ${{ github.ref_name }} target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.x86_64.rpm
+          gh release upload ${{ github.ref_name }} target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.aarch64.rpm
+          gh release upload ${{ github.ref_name }} target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-x86_64.AppImage
+          gh release upload ${{ github.ref_name }} target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-aarch64.AppImage
           gh release upload ${{ github.ref_name }} credentials.ini
 
   publish-win:
