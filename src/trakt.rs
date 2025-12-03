@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::{collections::HashMap, time::Duration};
 use ureq::{serde_json, Agent, AgentBuilder};
 
-use crate::utils::MediaType;
+use crate::utils::{user_agent, MediaType};
 
 #[derive(Deserialize)]
 pub struct TraktMovie {
@@ -71,6 +71,7 @@ impl Trakt {
             agent: AgentBuilder::new()
                 .timeout_read(Duration::from_secs(5))
                 .timeout_write(Duration::from_secs(5))
+                .user_agent(user_agent())
                 .build(),
             client_id,
             username,
