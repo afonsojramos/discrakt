@@ -6,7 +6,7 @@ use std::{thread::sleep, time::Duration};
 
 use crate::{
     trakt::{Trakt, TraktWatchingResponse},
-    utils::{get_watch_stats, log, MediaType},
+    utils::{get_watch_stats, MediaType},
 };
 
 pub struct Discord {
@@ -27,7 +27,7 @@ pub struct Payload {
 impl Discord {
     pub fn new(discord_client_id: String) -> Result<Discord, Box<dyn std::error::Error>> {
         let client = DiscordIpcClient::new(&discord_client_id).map_err(|e| {
-            log(&format!("Couldn't create Discord client: {e}"));
+            tracing::error!("Couldn't create Discord client: {e}");
             e
         })?;
         Ok(Discord { client })
@@ -38,7 +38,7 @@ impl Discord {
             if self.client.connect().is_ok() {
                 break;
             } else {
-                log("Failed to connect to Discord, retrying in 15 seconds");
+                tracing::warn!("Failed to connect to Discord, retrying in 15 seconds");
                 sleep(Duration::from_secs(15));
             }
         }
@@ -106,7 +106,7 @@ impl Discord {
                 )
             }
             _ => {
-                log(&format!("Unknown media type: {}", trakt_response.r#type));
+                tracing::warn!("Unknown media type: {}", trakt_response.r#type);
                 return;
             }
         };
@@ -138,10 +138,12 @@ impl Discord {
                 Button::new("Trakt", &payload_data.link_trakt),
             ]);
 
-        log(&format!(
-            "{} - {} | {}",
-            payload_data.details, payload_data.state, watch_time.watch_percentage
-        ));
+        tracing::info!(
+            details = %payload_data.details,
+            state = %payload_data.state,
+            progress = %watch_time.watch_percentage,
+            "Now playing"
+        );
 
         if self.client.set_activity(payload).is_err() {
             self.connect();

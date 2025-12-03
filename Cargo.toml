@@ -22,6 +22,8 @@ tray-icon = "0.19"
 image = { version = "0.25", default-features = false, features = ["png"] }
 crossbeam-channel = "0.5"
 winit = "0.30"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = "0.2"

@@ -4,7 +4,9 @@ use serde::Deserialize;
 use std::{env, io, path::PathBuf, time::Duration};
 use ureq::AgentBuilder;
 
-#[derive(Deserialize)]
+const REFRESH_TOKEN_TTL_SECS: u64 = 60 * 60 * 24 * 30 * 3; // 3 months
+
+#[derive(Deserialize, Debug)]
 pub struct TraktAccessToken {
     pub access_token: String,
     pub token_type: String,
@@ -43,7 +45,7 @@ impl Env {
         // Check if we have no access token
         if self.trakt_access_token.is_none() || self.trakt_access_token.as_ref().unwrap().is_empty()
         {
-            log("No OAuth access token found, starting authorization flow");
+            tracing::info!("No OAuth access token found, starting authorization flow");
             self.authorize_app();
             return;
         }
@@ -52,26 +54,26 @@ impl Env {
         if let Some(refresh_expires_at) = self.trakt_refresh_token_expires_at {
             let now = Utc::now().timestamp() as u64;
             if now >= refresh_expires_at {
-                log("OAuth refresh token has expired, need to reauthorize");
+                tracing::info!("OAuth refresh token has expired, need to reauthorize");
                 self.authorize_app();
             } else {
                 // Try to refresh the access token proactively
-                log("Refresh token is still valid, refreshing access token");
+                tracing::info!("Refresh token is still valid, refreshing access token");
                 self.exchange_refresh_token_for_access_token();
             }
         } else {
-            log(
-                "No refresh token expiry time found, unable to determine if refresh token is valid",
+            tracing::warn!(
+                "No refresh token expiry time found, unable to determine if refresh token is valid"
             );
         }
     }
 
     fn authorize_app(&mut self) {
-        log("Opening browser for OAuth authorization");
+        tracing::info!("Opening browser for OAuth authorization");
         if webbrowser::open(
             &format!("https://trakt.tv/oauth/authorize?response_type=code&client_id={}&redirect_uri=urn:ietf:wg:oauth:2.0:oob", self.trakt_client_id)
         ).is_err() {
-            log("Failed to open webbrowser to authorize discrakt");
+            tracing::error!("Failed to open webbrowser to authorize discrakt");
             return;
         };
         self.exchange_code_for_access_token();
@@ -87,7 +89,7 @@ impl Env {
             .expect("Failed to read line");
         let code = code.trim();
 
-        log("Exchanging authorization code for access token");
+        tracing::info!("Exchanging authorization code for access token");
 
         let agent = AgentBuilder::new()
             .timeout_read(Duration::from_secs(5))
@@ -107,14 +109,14 @@ impl Env {
         {
             Ok(response) => response,
             Err(ureq::Error::Status(code, response)) => {
-                log(&format!("Failed to exchange authorization code: HTTP {}", code));
+                tracing::error!("Failed to exchange authorization code: HTTP {}", code);
                 if let Ok(error_body) = response.into_string() {
-                    log(&format!("Error details: {}", error_body));
+                    tracing::error!("Error details: {}", error_body);
                 }
                 return;
             }
             Err(e) => {
-                log(&format!("Network error during token exchange: {}", e));
+                tracing::error!("Network error during token exchange: {}", e);
                 return;
             }
         };
@@ -122,24 +124,31 @@ impl Env {
         let json_response: Option<TraktAccessToken> = response.into_json().unwrap_or_default();
 
         if let Some(json_response) = json_response {
-            log("Successfully obtained OAuth tokens");
+            tracing::info!("Successfully obtained OAuth tokens");
             self.trakt_access_token = Some(json_response.access_token.clone());
             self.trakt_refresh_token = Some(json_response.refresh_token.clone());
 
-            // Calculate refresh token expiry (3 months from now)
+            // Update in-memory expiry (90 days from now)
             let now = Utc::now().timestamp() as u64;
-            self.trakt_refresh_token_expires_at = Some(now + 60 * 60 * 24 * 30 * 3); // 3 months
+            self.trakt_refresh_token_expires_at = Some(now + REFRESH_TOKEN_TTL_SECS);
+
+            tracing::debug!(
+                token_type = %json_response.token_type,
+                expires_in = json_response.expires_in,
+                scope = %json_response.scope,
+                "OAuth token response received"
+            );
 
             set_oauth_tokens(&json_response);
 
-            log(&format!(
-                "Tokens obtained successfully, refresh token expires at: {}",
-                DateTime::from_timestamp(self.trakt_refresh_token_expires_at.unwrap() as i64, 0)
+            tracing::info!(
+                expires_at = %DateTime::from_timestamp(self.trakt_refresh_token_expires_at.unwrap() as i64, 0)
                     .unwrap()
-                    .to_rfc3339_opts(SecondsFormat::Secs, true)
-            ));
+                    .to_rfc3339_opts(SecondsFormat::Secs, true),
+                "Tokens obtained successfully"
+            );
         } else {
-            log("Failed to parse token response from Trakt API");
+            tracing::error!("Failed to parse token response from Trakt API");
         }
     }
 
@@ -147,13 +156,13 @@ impl Env {
         let refresh_token = match &self.trakt_refresh_token {
             Some(token) if !token.is_empty() => token.clone(),
             _ => {
-                log("No refresh token available, need to reauthorize");
+                tracing::warn!("No refresh token available, need to reauthorize");
                 self.authorize_app();
                 return;
             }
         };
 
-        log("Attempting to refresh OAuth access token");
+        tracing::info!("Attempting to refresh OAuth access token");
 
         let agent = AgentBuilder::new()
             .timeout_read(Duration::from_secs(5))
@@ -173,22 +182,22 @@ impl Env {
         {
             Ok(response) => response,
             Err(ureq::Error::Status(400, response)) => {
-                log("Refresh token is invalid or expired, need to reauthorize");
+                tracing::warn!("Refresh token is invalid or expired, need to reauthorize");
                 if let Ok(error_body) = response.into_string() {
-                    log(&format!("Error details: {}", error_body));
+                    tracing::error!("Error details: {}", error_body);
                 }
                 self.authorize_app();
                 return;
             }
             Err(ureq::Error::Status(code, response)) => {
-                log(&format!("Failed to refresh token: HTTP {}", code));
+                tracing::error!("Failed to refresh token: HTTP {}", code);
                 if let Ok(error_body) = response.into_string() {
-                    log(&format!("Error details: {}", error_body));
+                    tracing::error!("Error details: {}", error_body);
                 }
                 return;
             }
             Err(e) => {
-                log(&format!("Network error during token refresh: {}", e));
+                tracing::error!("Network error during token refresh: {}", e);
                 return;
             }
         };
@@ -196,25 +205,25 @@ impl Env {
         let json_response: Option<TraktAccessToken> = response.into_json().unwrap_or_default();
 
         if let Some(json_response) = json_response {
-            log("Successfully refreshed OAuth access token");
+            tracing::info!("Successfully refreshed OAuth access token");
             self.trakt_access_token = Some(json_response.access_token.clone());
             self.trakt_refresh_token = Some(json_response.refresh_token.clone());
 
-            // Calculate refresh token expiry (3 months from now)
+            // Update in-memory expiry (90 days from now)
             let now = Utc::now().timestamp() as u64;
-            self.trakt_refresh_token_expires_at = Some(now + 60 * 60 * 24 * 30 * 3); // 3 months
+            self.trakt_refresh_token_expires_at = Some(now + REFRESH_TOKEN_TTL_SECS);
 
             set_oauth_tokens(&json_response);
 
-            log(&format!(
-                "Token refreshed successfully, new refresh token expires at: {}",
-                DateTime::from_timestamp(self.trakt_refresh_token_expires_at.unwrap() as i64, 0)
+            tracing::info!(
+                expires_at = %DateTime::from_timestamp(self.trakt_refresh_token_expires_at.unwrap() as i64, 0)
                     .unwrap()
-                    .to_rfc3339_opts(SecondsFormat::Secs, true)
-            ));
+                    .to_rfc3339_opts(SecondsFormat::Secs, true),
+                "Token refreshed successfully"
+            );
         } else {
-            log("Failed to parse refresh token response from Trakt API");
-            log("Will attempt full reauthorization");
+            tracing::error!("Failed to parse refresh token response from Trakt API");
+            tracing::warn!("Will attempt full reauthorization");
             self.authorize_app();
         }
     }
@@ -233,13 +242,13 @@ fn find_config_file() -> Option<PathBuf> {
             return Some(config_file);
         }
     }
-    log(&format!(
+    tracing::error!(
         "Could not find credentials.ini in {:?}",
         locations
             .iter()
             .map(|loc| loc.to_str().to_owned().unwrap())
             .collect::<Vec<_>>()
-    ));
+    );
     None
 }
 
@@ -291,19 +300,17 @@ fn set_oauth_tokens(json_response: &TraktAccessToken) {
         "OAuthRefreshToken",
         Some(json_response.refresh_token.as_str()),
     );
+
+    // Store refresh token expiry as now + 3 months
+    let now = Utc::now().timestamp() as u64;
+    let refresh_token_expires_at = now + REFRESH_TOKEN_TTL_SECS;
+
     config.set(
         "Trakt API",
         "OAuthRefreshTokenExpiresAt",
-        Some(json_response.created_at.to_string()),
+        Some(refresh_token_expires_at.to_string()),
     );
     config.write(path).expect("Failed to write credentials.ini");
-}
-
-pub fn log(message: &str) {
-    println!(
-        "{} : {message}",
-        Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-    );
 }
 
 pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {

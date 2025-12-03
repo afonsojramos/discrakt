@@ -6,7 +6,6 @@ use tray_icon::{
 };
 
 use crate::state::AppState;
-use crate::utils::log;
 
 pub enum TrayCommand {
     Quit,
@@ -50,7 +49,7 @@ impl Tray {
 
         let menu_receiver = MenuEvent::receiver().clone();
 
-        log("System tray initialized");
+        tracing::info!("System tray initialized");
 
         Ok(Tray {
             tray_icon,
@@ -88,7 +87,7 @@ impl Tray {
     pub fn poll_events(&mut self, state: &Arc<RwLock<AppState>>) -> Option<TrayCommand> {
         if let Ok(event) = self.menu_receiver.try_recv() {
             if event.id == self.quit_item_id {
-                log("Quit requested from tray menu");
+                tracing::info!("Quit requested from tray menu");
                 return Some(TrayCommand::Quit);
             } else if event.id == self.pause_item_id {
                 if let Ok(mut app_state) = state.write() {
@@ -96,10 +95,10 @@ impl Tray {
                     app_state.set_paused(new_paused);
                     if new_paused {
                         self.pause_item.set_text("Resume");
-                        log("Paused from tray menu");
+                        tracing::info!("Paused from tray menu");
                     } else {
                         self.pause_item.set_text("Pause");
-                        log("Resumed from tray menu");
+                        tracing::info!("Resumed from tray menu");
                     }
                 }
                 return Some(TrayCommand::TogglePause);
