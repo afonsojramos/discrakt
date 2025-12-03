@@ -1,15 +1,17 @@
 use crossbeam_channel::Receiver;
 use std::sync::{Arc, RwLock};
 use tray_icon::{
-    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem},
     Icon, TrayIcon, TrayIconBuilder,
 };
 
+use crate::autostart;
 use crate::state::AppState;
 
 pub enum TrayCommand {
     Quit,
     TogglePause,
+    ToggleAutostart,
 }
 
 pub struct Tray {
@@ -17,7 +19,9 @@ pub struct Tray {
     menu_receiver: Receiver<MenuEvent>,
     quit_item_id: tray_icon::menu::MenuId,
     pause_item_id: tray_icon::menu::MenuId,
+    autostart_item_id: tray_icon::menu::MenuId,
     pause_item: MenuItem,
+    autostart_item: CheckMenuItem,
     status_item: MenuItem,
     last_status: String,
 }
@@ -29,15 +33,19 @@ impl Tray {
         // Status display (disabled, just for showing info)
         let status_item = MenuItem::new("Starting...", false, None);
         let pause_item = MenuItem::new("Pause", true, None);
+        let autostart_item =
+            CheckMenuItem::new("Start at Login", true, autostart::is_enabled(), None);
         let quit_item = MenuItem::new("Quit Discrakt", true, None);
 
         let pause_item_id = pause_item.id().clone();
+        let autostart_item_id = autostart_item.id().clone();
         let quit_item_id = quit_item.id().clone();
 
         let menu = Menu::new();
         menu.append(&status_item)?;
         menu.append(&PredefinedMenuItem::separator())?;
         menu.append(&pause_item)?;
+        menu.append(&autostart_item)?;
         menu.append(&PredefinedMenuItem::separator())?;
         menu.append(&quit_item)?;
 
@@ -56,7 +64,9 @@ impl Tray {
             menu_receiver,
             quit_item_id,
             pause_item_id,
+            autostart_item_id,
             pause_item,
+            autostart_item,
             status_item,
             last_status: String::new(),
         })
@@ -102,6 +112,22 @@ impl Tray {
                     }
                 }
                 return Some(TrayCommand::TogglePause);
+            } else if event.id == self.autostart_item_id {
+                match autostart::toggle() {
+                    Ok(enabled) => {
+                        self.autostart_item.set_checked(enabled);
+                        tracing::info!(
+                            "Autostart {}",
+                            if enabled { "enabled" } else { "disabled" }
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to toggle autostart: {}", e);
+                        // Revert checkbox to actual state
+                        self.autostart_item.set_checked(autostart::is_enabled());
+                    }
+                }
+                return Some(TrayCommand::ToggleAutostart);
             }
         }
         None

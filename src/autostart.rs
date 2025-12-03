@@ -1,0 +1,284 @@
+use std::path::PathBuf;
+
+const LAUNCHAGENT_LABEL: &str = "com.afonsojramos.discrakt";
+
+#[cfg(target_os = "macos")]
+mod macos {
+    use super::*;
+    use std::fs;
+    use std::process::Command;
+
+    fn launch_agents_dir() -> Option<PathBuf> {
+        dirs::home_dir().map(|h| h.join("Library/LaunchAgents"))
+    }
+
+    fn plist_path() -> Option<PathBuf> {
+        launch_agents_dir().map(|d| d.join(format!("{}.plist", LAUNCHAGENT_LABEL)))
+    }
+
+    fn app_path() -> Option<PathBuf> {
+        // Try to find the app bundle first
+        if let Ok(exe) = std::env::current_exe() {
+            // If running from an app bundle, exe is at Discrakt.app/Contents/MacOS/discrakt
+            // We want to return the .app path
+            if let Some(parent) = exe.parent() {
+                if parent.ends_with("Contents/MacOS") {
+                    if let Some(app_bundle) = parent.parent().and_then(|p| p.parent()) {
+                        return Some(app_bundle.to_path_buf());
+                    }
+                }
+            }
+            // Not in app bundle, use the executable directly
+            return Some(exe);
+        }
+        None
+    }
+
+    pub fn is_enabled() -> bool {
+        plist_path().map(|p| p.exists()).unwrap_or(false)
+    }
+
+    pub fn enable() -> Result<(), String> {
+        let plist_path = plist_path().ok_or("Could not determine LaunchAgents directory")?;
+        let app_path = app_path().ok_or("Could not determine application path")?;
+
+        // Ensure LaunchAgents directory exists
+        if let Some(dir) = plist_path.parent() {
+            fs::create_dir_all(dir)
+                .map_err(|e| format!("Failed to create LaunchAgents dir: {}", e))?;
+        }
+
+        // Determine if we're launching an app bundle or binary
+        let (program_path, program_args) =
+            if app_path.extension().map(|e| e == "app").unwrap_or(false) {
+                // App bundle - use open command
+                (
+                    "/usr/bin/open".to_string(),
+                    format!(
+                        "<string>-a</string>\n      <string>{}</string>",
+                        app_path.display()
+                    ),
+                )
+            } else {
+                // Direct binary
+                (app_path.display().to_string(), String::new())
+            };
+
+        let plist_content = if program_args.is_empty() {
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{}</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>{}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>
+"#,
+                LAUNCHAGENT_LABEL, program_path
+            )
+        } else {
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{}</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>{}</string>
+      {}
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>
+"#,
+                LAUNCHAGENT_LABEL, program_path, program_args
+            )
+        };
+
+        fs::write(&plist_path, plist_content)
+            .map_err(|e| format!("Failed to write plist: {}", e))?;
+
+        // Load the launch agent
+        let _ = Command::new("launchctl")
+            .args(["load", "-w", plist_path.to_str().unwrap()])
+            .output();
+
+        tracing::info!("Autostart enabled via LaunchAgent");
+        Ok(())
+    }
+
+    pub fn disable() -> Result<(), String> {
+        let plist_path = plist_path().ok_or("Could not determine LaunchAgents directory")?;
+
+        if plist_path.exists() {
+            // Unload the launch agent first
+            let _ = Command::new("launchctl")
+                .args(["unload", "-w", plist_path.to_str().unwrap()])
+                .output();
+
+            fs::remove_file(&plist_path).map_err(|e| format!("Failed to remove plist: {}", e))?;
+
+            tracing::info!("Autostart disabled");
+        }
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+mod windows {
+    use std::process::Command;
+
+    const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+    const VALUE_NAME: &str = "Discrakt";
+
+    fn exe_path() -> Option<String> {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.to_str().map(String::from))
+    }
+
+    pub fn is_enabled() -> bool {
+        let output = Command::new("reg")
+            .args(["query", RUN_KEY, "/v", VALUE_NAME])
+            .output();
+
+        output.map(|o| o.status.success()).unwrap_or(false)
+    }
+
+    pub fn enable() -> Result<(), String> {
+        let exe = exe_path().ok_or("Could not determine executable path")?;
+
+        let status = Command::new("reg")
+            .args([
+                "add", RUN_KEY, "/v", VALUE_NAME, "/t", "REG_SZ", "/d", &exe, "/f",
+            ])
+            .status()
+            .map_err(|e| format!("Failed to run reg command: {}", e))?;
+
+        if status.success() {
+            tracing::info!("Autostart enabled via Registry");
+            Ok(())
+        } else {
+            Err("Failed to add registry key".to_string())
+        }
+    }
+
+    pub fn disable() -> Result<(), String> {
+        let status = Command::new("reg")
+            .args(["delete", RUN_KEY, "/v", VALUE_NAME, "/f"])
+            .status()
+            .map_err(|e| format!("Failed to run reg command: {}", e))?;
+
+        if status.success() {
+            tracing::info!("Autostart disabled");
+            Ok(())
+        } else {
+            Err("Failed to remove registry key".to_string())
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod linux {
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn autostart_dir() -> Option<PathBuf> {
+        dirs::config_dir().map(|c| c.join("autostart"))
+    }
+
+    fn desktop_file_path() -> Option<PathBuf> {
+        autostart_dir().map(|d| d.join("discrakt.desktop"))
+    }
+
+    fn exe_path() -> Option<String> {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.to_str().map(String::from))
+    }
+
+    pub fn is_enabled() -> bool {
+        desktop_file_path().map(|p| p.exists()).unwrap_or(false)
+    }
+
+    pub fn enable() -> Result<(), String> {
+        let desktop_path = desktop_file_path().ok_or("Could not determine autostart directory")?;
+        let exe = exe_path().ok_or("Could not determine executable path")?;
+
+        // Ensure autostart directory exists
+        if let Some(dir) = desktop_path.parent() {
+            fs::create_dir_all(dir)
+                .map_err(|e| format!("Failed to create autostart dir: {}", e))?;
+        }
+
+        let desktop_content = format!(
+            r#"[Desktop Entry]
+Type=Application
+Name=Discrakt
+Comment=Trakt to Discord Rich Presence
+Exec={}
+Icon=discrakt
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+"#,
+            exe
+        );
+
+        fs::write(&desktop_path, desktop_content)
+            .map_err(|e| format!("Failed to write desktop file: {}", e))?;
+
+        tracing::info!("Autostart enabled via XDG autostart");
+        Ok(())
+    }
+
+    pub fn disable() -> Result<(), String> {
+        let desktop_path = desktop_file_path().ok_or("Could not determine autostart directory")?;
+
+        if desktop_path.exists() {
+            fs::remove_file(&desktop_path)
+                .map_err(|e| format!("Failed to remove desktop file: {}", e))?;
+
+            tracing::info!("Autostart disabled");
+        }
+        Ok(())
+    }
+}
+
+// Re-export platform-specific functions
+#[cfg(target_os = "macos")]
+pub use macos::{disable, enable, is_enabled};
+
+#[cfg(target_os = "windows")]
+pub use windows::{disable, enable, is_enabled};
+
+#[cfg(target_os = "linux")]
+pub use linux::{disable, enable, is_enabled};
+
+pub fn toggle() -> Result<bool, String> {
+    if is_enabled() {
+        disable()?;
+        Ok(false)
+    } else {
+        enable()?;
+        Ok(true)
+    }
+}
