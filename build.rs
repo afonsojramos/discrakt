@@ -5,7 +5,8 @@ fn main() {
         res.set_icon("assets/Discrakt.ico");
         res.set("ProductName", "Discrakt");
         res.set("FileDescription", "Trakt to Discord Rich Presence");
-        res.set("LegalCopyright", "Copyright (c) 2024 afonsojramos");
-        res.compile().expect("Failed to compile Windows resources");
+        res.set("LegalCopyright", "Copyright (c) afonsojramos");
+        res.compile()
+            .expect("Failed to compile Windows resources. Ensure assets/Discrakt.ico exists");
     }
 }

@@ -63,13 +63,14 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install WiX Toolset
-        run: |
-          dotnet tool install --global wix --version 5.0.2
-          wix extension add WixToolset.UI.wixext/5.0.2
+      - name: Install WiX Toolset v6
+        run: dotnet tool install --global wix --version 6.0.2
 
-      - name: Install cargo-wix
-        run: cargo install cargo-wix
+      - name: Extract version
+        id: version
+        run: |
+          $version = "${{ github.event.release.tag_name }}".TrimStart('v')
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
       - name: Build win64
         run: cargo build --release
@@ -77,25 +78,26 @@ jobs:
       - name: Prepare win64 Binary
         run: Copy-Item target/release/discrakt.exe target/release/discrakt_win64.exe
 
-      - name: Initialize WiX config
-        run: cargo wix init --force
-
       - name: Build MSI installer
-        run: cargo wix --no-build --nocapture
-
-      - name: Rename MSI
         run: |
-          $version = "${{ github.event.release.tag_name }}".TrimStart('v')
-          $msiFile = Get-ChildItem -Path "target/wix" -Filter "discrakt-*.msi" | Select-Object -First 1
-          Move-Item $msiFile.FullName "target/wix/Discrakt_${version}_win64.msi"
+          New-Item -ItemType Directory -Force -Path target/wix
+          wix build -arch x64 -o "target/wix/Discrakt_${{ steps.version.outputs.VERSION }}_win64.msi" assets/Package.wxs
+
+      - name: Verify MSI
+        run: |
+          $msiPath = "target/wix/Discrakt_${{ steps.version.outputs.VERSION }}_win64.msi"
+          if (-not (Test-Path $msiPath)) {
+            Write-Error "MSI file not found at $msiPath"
+            exit 1
+          }
+          Write-Host "MSI created successfully: $msiPath"
 
       - name: Upload binaries
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = "${{ github.event.release.tag_name }}".TrimStart('v')
           gh release upload ${{ github.ref_name }} target/release/discrakt_win64.exe
-          gh release upload ${{ github.ref_name }} "target/wix/Discrakt_${version}_win64.msi"
+          gh release upload ${{ github.ref_name }} "target/wix/Discrakt_${{ steps.version.outputs.VERSION }}_win64.msi"
 
   publish-macos:
     runs-on: macos-14
@@ -195,7 +197,7 @@ jobs:
               <key>NSHighResolutionCapable</key>
               <true/>
               <key>NSHumanReadableCopyright</key>
-              <string>Copyright © 2024 afonsojramos. All rights reserved.</string>
+              <string>Copyright © afonsojramos. All rights reserved.</string>
               <key>NSPrincipalClass</key>
               <string>NSApplication</string>
               <key>NSSupportsAutomaticGraphicsSwitching</key>

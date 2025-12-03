@@ -30,7 +30,7 @@ objc2-app-kit = "0.2"
 objc2-foundation = "0.2"
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
-winresource = "0.1"
+winresource = "0.1.28"
 
 [profile.release]
 strip = "symbols"
@@ -43,7 +43,7 @@ name = "Discrakt"
 identifier = "com.afonsojramos.discrakt"
 icon = ["assets/Discrakt.icns"]
 version = "2.2.3"
-copyright = "Copyright (c) 2024 afonsojramos. All rights reserved."
+copyright = "Copyright (c) afonsojramos. All rights reserved."
 category = "public.app-category.utilities"
 short_description = "Trakt to Discord Rich Presence"
 long_description = """
