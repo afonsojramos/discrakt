@@ -74,3 +74,14 @@ assets = [
     ["assets/Discrakt.iconset/icon_256x256.png", "usr/share/icons/hicolor/256x256/apps/discrakt.png", "644"],
     ["assets/Discrakt.iconset/icon_512x512.png", "usr/share/icons/hicolor/512x512/apps/discrakt.png", "644"],
 ]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/discrakt", dest = "/usr/bin/discrakt", mode = "755" },
+    { source = "assets/discrakt.desktop", dest = "/usr/share/applications/discrakt.desktop", mode = "644" },
+    { source = "assets/Discrakt.iconset/icon_16x16.png", dest = "/usr/share/icons/hicolor/16x16/apps/discrakt.png", mode = "644" },
+    { source = "assets/Discrakt.iconset/icon_32x32.png", dest = "/usr/share/icons/hicolor/32x32/apps/discrakt.png", mode = "644" },
+    { source = "assets/Discrakt.iconset/icon_128x128.png", dest = "/usr/share/icons/hicolor/128x128/apps/discrakt.png", mode = "644" },
+    { source = "assets/Discrakt.iconset/icon_256x256.png", dest = "/usr/share/icons/hicolor/256x256/apps/discrakt.png", mode = "644" },
+    { source = "assets/Discrakt.iconset/icon_512x512.png", dest = "/usr/share/icons/hicolor/512x512/apps/discrakt.png", mode = "644" },
+]
