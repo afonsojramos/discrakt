@@ -78,7 +78,7 @@ impl ApplicationHandler for App {
                         self.should_quit.store(true, Ordering::Relaxed);
                         event_loop.exit();
                     }
-                    TrayCommand::TogglePause => {
+                    TrayCommand::TogglePause | TrayCommand::ToggleAutostart => {
                         // State is already updated in poll_events
                     }
                 }

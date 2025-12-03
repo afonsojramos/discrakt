@@ -1,3 +1,4 @@
+pub mod autostart;
 pub mod discord;
 pub mod state;
 pub mod trakt;
