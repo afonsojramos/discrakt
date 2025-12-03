@@ -63,27 +63,41 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install WiX Toolset v6
+        run: dotnet tool install --global wix --version 6.0.2
+
+      - name: Extract version
+        id: version
+        run: |
+          $version = "${{ github.event.release.tag_name }}".TrimStart('v')
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
       - name: Build win64
         run: cargo build --release
 
       - name: Prepare win64 Binary
-        run: mv target/release/discrakt.exe target/release/discrakt_win64.exe
+        run: Copy-Item target/release/discrakt.exe target/release/discrakt_win64.exe
 
-      - name: Create silent win64 executable
-        run: sed -i '1i\#\!\[windows_subsystem\ \=\ \"windows\"\]' src/main.rs
+      - name: Build MSI installer
+        run: |
+          New-Item -ItemType Directory -Force -Path target/wix
+          wix build -arch x64 -o "target/wix/Discrakt_${{ steps.version.outputs.VERSION }}_win64.msi" assets/Package.wxs
 
-      - name: Build silent win64 executable
-        run: cargo build --release
-
-      - name: Prepare silent win64 Binary
-        run: mv target/release/discrakt.exe target/release/discrakt_win64_silent.exe
+      - name: Verify MSI
+        run: |
+          $msiPath = "target/wix/Discrakt_${{ steps.version.outputs.VERSION }}_win64.msi"
+          if (-not (Test-Path $msiPath)) {
+            Write-Error "MSI file not found at $msiPath"
+            exit 1
+          }
+          Write-Host "MSI created successfully: $msiPath"
 
       - name: Upload binaries
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} target/release/discrakt_win64_silent.exe
           gh release upload ${{ github.ref_name }} target/release/discrakt_win64.exe
+          gh release upload ${{ github.ref_name }} "target/wix/Discrakt_${{ steps.version.outputs.VERSION }}_win64.msi"
 
   publish-macos:
     runs-on: macos-14
@@ -183,7 +197,7 @@ jobs:
               <key>NSHighResolutionCapable</key>
               <true/>
               <key>NSHumanReadableCopyright</key>
-              <string>Copyright © 2024 afonsojramos. All rights reserved.</string>
+              <string>Copyright © afonsojramos. All rights reserved.</string>
               <key>NSPrincipalClass</key>
               <string>NSApplication</string>
               <key>NSSupportsAutomaticGraphicsSwitching</key>

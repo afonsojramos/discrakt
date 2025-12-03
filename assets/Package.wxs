@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Discrakt"
+    Version="!(bind.fileVersion.DiscrakterExe)"
+    Manufacturer="afonsojramos"
+    UpgradeCode="8B55A0B3-6E9D-4A7C-B1F2-3C8E5D6F7A9B"
+    Scope="perUser">
+
+    <SummaryInformation
+      Description="Trakt to Discord Rich Presence"
+      Manufacturer="afonsojramos" />
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+      AllowSameVersionUpgrades="yes" />
+
+    <Media Id="1" Cabinet="Discrakt.cab" EmbedCab="yes" />
+
+    <Icon Id="DiscrakterIcon" SourceFile="assets\Discrakt.ico" />
+    <Property Id="ARPPRODUCTICON" Value="DiscrakterIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/afonsojramos/discrakt" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/afonsojramos/discrakt" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Discrakt">
+        <Component Id="MainExecutable" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+          <File Id="DiscrakterExe" Name="discrakt.exe" Source="target\release\discrakt.exe" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="DiscrakterProgramMenuDir" Name="Discrakt">
+        <Component Id="StartMenuShortcut" Guid="B2C3D4E5-F6A7-8901-BCDE-F23456789012">
+          <Shortcut Id="StartMenuShortcut"
+            Name="Discrakt"
+            Description="Trakt to Discord Rich Presence"
+            Target="[INSTALLFOLDER]discrakt.exe"
+            Icon="DiscrakterIcon"
+            WorkingDirectory="INSTALLFOLDER" />
+          <RemoveFolder Id="RemoveDiscrakterProgramMenuDir" On="uninstall" />
+          <RegistryValue Root="HKCU" Key="Software\Discrakt" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="Discrakt" Level="1">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+  </Package>
+</Wix>
