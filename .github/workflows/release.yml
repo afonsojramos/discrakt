@@ -4,13 +4,18 @@ on:
   release:
     types: [published]
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   publish-linux:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -48,10 +53,12 @@ jobs:
 
   publish-win:
     runs-on: windows-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -78,3 +85,222 @@ jobs:
           gh release upload ${{ github.ref_name }} target/release/discrakt_win64_silent.exe
           gh release upload ${{ github.ref_name }} target/release/discrakt_win64.exe
 
+  publish-macos:
+    runs-on: macos-14
+    permissions:
+      contents: write
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "10.13"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: "aarch64-apple-darwin, x86_64-apple-darwin"
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build arm64 (Apple Silicon)
+        run: cargo build --release --target=aarch64-apple-darwin
+
+      - name: Build x86_64 (Intel)
+        run: cargo build --release --target=x86_64-apple-darwin
+
+      - name: Create universal binary
+        run: |
+          mkdir -p target/release
+          lipo -create \
+            target/aarch64-apple-darwin/release/discrakt \
+            target/x86_64-apple-darwin/release/discrakt \
+            -output target/release/discrakt
+          chmod +x target/release/discrakt
+
+      - name: Verify universal binary
+        run: |
+          file target/release/discrakt
+          lipo -info target/release/discrakt
+
+      - name: Create app bundle structure
+        run: |
+          APP_NAME="Discrakt"
+          APP_BUNDLE="target/release/${APP_NAME}.app"
+
+          mkdir -p "${APP_BUNDLE}/Contents/MacOS"
+          mkdir -p "${APP_BUNDLE}/Contents/Resources"
+
+          cp target/release/discrakt "${APP_BUNDLE}/Contents/MacOS/discrakt"
+          cp assets/Discrakt.icns "${APP_BUNDLE}/Contents/Resources/Discrakt.icns"
+
+      - name: Create Info.plist
+        run: |
+          APP_BUNDLE="target/release/Discrakt.app"
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+
+          cat > "${APP_BUNDLE}/Contents/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>en</string>
+              <key>CFBundleDisplayName</key>
+              <string>Discrakt</string>
+              <key>CFBundleExecutable</key>
+              <string>discrakt</string>
+              <key>CFBundleIconFile</key>
+              <string>Discrakt</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.afonsojramos.discrakt</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>Discrakt</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${VERSION}</string>
+              <key>CFBundleVersion</key>
+              <string>${VERSION}</string>
+              <key>LSApplicationCategoryType</key>
+              <string>public.app-category.utilities</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.13</string>
+              <key>LSUIElement</key>
+              <true/>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+              <key>NSHumanReadableCopyright</key>
+              <string>Copyright © 2024 afonsojramos. All rights reserved.</string>
+              <key>NSPrincipalClass</key>
+              <string>NSApplication</string>
+              <key>NSSupportsAutomaticGraphicsSwitching</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Import code signing certificate
+        if: env.BUILD_CERTIFICATE_BASE64 != ''
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+      - name: Sign app bundle
+        if: env.MACOS_SIGNING_IDENTITY != ''
+        env:
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          codesign --force --options runtime \
+            --sign "$MACOS_SIGNING_IDENTITY" \
+            --timestamp \
+            "target/release/Discrakt.app/Contents/MacOS/discrakt"
+
+          codesign --force --options runtime \
+            --sign "$MACOS_SIGNING_IDENTITY" \
+            --timestamp \
+            "target/release/Discrakt.app"
+
+          codesign --verify --deep --strict --verbose=2 "target/release/Discrakt.app"
+
+      - name: Ad-hoc sign (if no certificate)
+        if: env.MACOS_SIGNING_IDENTITY == ''
+        env:
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          codesign --force --deep --sign - "target/release/Discrakt.app"
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMG
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+
+          create-dmg \
+            --volname "Discrakt ${VERSION}" \
+            --volicon "assets/Discrakt.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "Discrakt.app" 150 185 \
+            --hide-extension "Discrakt.app" \
+            --app-drop-link 450 185 \
+            --no-internet-enable \
+            "target/release/Discrakt_${VERSION}_universal.dmg" \
+            "target/release/Discrakt.app" || true
+
+          if [ ! -f "target/release/Discrakt_${VERSION}_universal.dmg" ]; then
+            hdiutil create -volname "Discrakt ${VERSION}" \
+              -srcfolder "target/release/Discrakt.app" \
+              -ov -format UDZO \
+              "target/release/Discrakt_${VERSION}_universal.dmg"
+          fi
+
+      - name: Notarize DMG
+        if: env.APPLE_ID != '' && env.APPLE_APP_PASSWORD != '' && env.APPLE_TEAM_ID != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          DMG_PATH="target/release/Discrakt_${VERSION}_universal.dmg"
+
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+
+      - name: Prepare standalone binaries
+        run: |
+          cp target/aarch64-apple-darwin/release/discrakt "target/release/discrakt_macos_arm64"
+          cp target/x86_64-apple-darwin/release/discrakt "target/release/discrakt_macos_x86_64"
+          cp target/release/discrakt "target/release/discrakt_macos_universal"
+          chmod +x target/release/discrakt_macos_*
+
+      - name: Upload binaries
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION_CLEAN="${VERSION#v}"
+
+          gh release upload "${{ github.ref_name }}" \
+            "target/release/Discrakt_${VERSION_CLEAN}_universal.dmg" \
+            "target/release/discrakt_macos_arm64" \
+            "target/release/discrakt_macos_x86_64" \
+            "target/release/discrakt_macos_universal" \
+            --clobber
