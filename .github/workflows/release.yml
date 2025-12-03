@@ -63,27 +63,39 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install WiX Toolset
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add WixToolset.UI.wixext/5.0.2
+
+      - name: Install cargo-wix
+        run: cargo install cargo-wix
+
       - name: Build win64
         run: cargo build --release
 
       - name: Prepare win64 Binary
-        run: mv target/release/discrakt.exe target/release/discrakt_win64.exe
+        run: Copy-Item target/release/discrakt.exe target/release/discrakt_win64.exe
 
-      - name: Create silent win64 executable
-        run: sed -i '1i\#\!\[windows_subsystem\ \=\ \"windows\"\]' src/main.rs
+      - name: Initialize WiX config
+        run: cargo wix init --force
 
-      - name: Build silent win64 executable
-        run: cargo build --release
+      - name: Build MSI installer
+        run: cargo wix --no-build --nocapture
 
-      - name: Prepare silent win64 Binary
-        run: mv target/release/discrakt.exe target/release/discrakt_win64_silent.exe
+      - name: Rename MSI
+        run: |
+          $version = "${{ github.event.release.tag_name }}".TrimStart('v')
+          $msiFile = Get-ChildItem -Path "target/wix" -Filter "discrakt-*.msi" | Select-Object -First 1
+          Move-Item $msiFile.FullName "target/wix/Discrakt_${version}_win64.msi"
 
       - name: Upload binaries
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} target/release/discrakt_win64_silent.exe
+          $version = "${{ github.event.release.tag_name }}".TrimStart('v')
           gh release upload ${{ github.ref_name }} target/release/discrakt_win64.exe
+          gh release upload ${{ github.ref_name }} "target/wix/Discrakt_${version}_win64.msi"
 
   publish-macos:
     runs-on: macos-14
