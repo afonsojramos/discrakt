@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Discrakt
+GenericName=Discord Rich Presence for Trakt
+Comment=Trakt to Discord Rich Presence
+Exec=discrakt
+Icon=discrakt
+Terminal=false
+Categories=Network;Utility;
+Keywords=discord;trakt;presence;media;
+StartupNotify=false
+StartupWMClass=discrakt

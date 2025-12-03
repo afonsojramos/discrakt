@@ -52,3 +52,25 @@ It runs silently in your system tray and automatically updates your Discord
 status when you're watching movies or TV shows tracked by Trakt.tv.
 """
 osx_minimum_system_version = "10.13"
+
+[package.metadata.deb]
+maintainer = "afonsojramos <afonsojorgeramos@gmail.com>"
+copyright = "Copyright (c) afonsojramos. All rights reserved."
+license-file = ["LICENSE", "0"]
+extended-description = """
+Discrakt bridges your Trakt.tv watching status to Discord Rich Presence.
+It runs silently in your system tray and automatically updates your Discord
+status when you're watching movies or TV shows tracked by Trakt.tv.
+"""
+section = "utils"
+priority = "optional"
+depends = "$auto"
+assets = [
+    ["target/release/discrakt", "usr/bin/", "755"],
+    ["assets/discrakt.desktop", "usr/share/applications/", "644"],
+    ["assets/Discrakt.iconset/icon_16x16.png", "usr/share/icons/hicolor/16x16/apps/discrakt.png", "644"],
+    ["assets/Discrakt.iconset/icon_32x32.png", "usr/share/icons/hicolor/32x32/apps/discrakt.png", "644"],
+    ["assets/Discrakt.iconset/icon_128x128.png", "usr/share/icons/hicolor/128x128/apps/discrakt.png", "644"],
+    ["assets/Discrakt.iconset/icon_256x256.png", "usr/share/icons/hicolor/256x256/apps/discrakt.png", "644"],
+    ["assets/Discrakt.iconset/icon_512x512.png", "usr/share/icons/hicolor/512x512/apps/discrakt.png", "644"],
+]
