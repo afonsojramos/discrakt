@@ -85,6 +85,7 @@ jobs:
 
       - name: Rename arm64 .rpm
         run: |
+          mkdir -p target/generate-rpm
           mv target/aarch64-unknown-linux-gnu/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}-1.aarch64.rpm \
              target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.aarch64.rpm
 
@@ -106,9 +107,10 @@ jobs:
           HERE=${SELF%/*}
           exec "${HERE}/usr/bin/discrakt" "$@"
           APPRUN
+          sed -i 's/^          //' target/appimage/Discrakt.AppDir/AppRun
           chmod +x target/appimage/Discrakt.AppDir/AppRun
 
-          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          wget -q https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage -O appimagetool
           chmod +x appimagetool
           ARCH=x86_64 ./appimagetool target/appimage/Discrakt.AppDir target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-x86_64.AppImage
 
@@ -131,11 +133,11 @@ jobs:
           HERE=${SELF%/*}
           exec "${HERE}/usr/bin/discrakt" "$@"
           APPRUN
+          sed -i 's/^          //' target/appimage/Discrakt.AppDir/AppRun
           chmod +x target/appimage/Discrakt.AppDir/AppRun
 
-          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-aarch64.AppImage -O appimagetool-arm64
-          chmod +x appimagetool-arm64
-          ARCH=aarch64 ./appimagetool-arm64 target/appimage/Discrakt.AppDir target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-aarch64.AppImage
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/13/runtime-aarch64 -O runtime-aarch64
+          ARCH=aarch64 ./appimagetool --runtime-file runtime-aarch64 target/appimage/Discrakt.AppDir target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-aarch64.AppImage
 
       - name: Upload binaries
         env:
