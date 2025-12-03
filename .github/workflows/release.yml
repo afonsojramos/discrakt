@@ -78,37 +78,3 @@ jobs:
           gh release upload ${{ github.ref_name }} target/release/discrakt_win64_silent.exe
           gh release upload ${{ github.ref_name }} target/release/discrakt_win64.exe
 
-  publish-mac:
-    runs-on: macos-14
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: "aarch64-apple-darwin, x86_64-apple-darwin"
-
-      - name: Build darwin
-        run: cargo build --release --target=x86_64-apple-darwin
-
-      - name: Prepare darwin binary
-        run: |
-          mv target/x86_64-apple-darwin/release/discrakt target/release/discrakt_darwin
-          chmod +x target/release/discrakt_darwin
-
-      - name: Build darwin arm64
-        run: cargo build --release --target=aarch64-apple-darwin
-
-      - name: Prepare darwin arm64 binary
-        run: |
-          mv target/aarch64-apple-darwin/release/discrakt target/release/discrakt_darwin_arm64
-          chmod +x target/release/discrakt_darwin_arm64
-
-      - name: Upload binaries
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload ${{ github.ref_name }} target/release/discrakt_darwin_arm64
-          gh release upload ${{ github.ref_name }} target/release/discrakt_darwin

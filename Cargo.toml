@@ -28,4 +28,22 @@ objc2-app-kit = "0.2"
 objc2-foundation = "0.2"
 
 [profile.release]
-strip = "debuginfo"
+strip = "symbols"
+lto = true
+codegen-units = 1
+opt-level = "z"
+
+[package.metadata.bundle]
+name = "Discrakt"
+identifier = "com.afonsojramos.discrakt"
+icon = ["assets/Discrakt.icns"]
+version = "2.2.3"
+copyright = "Copyright (c) 2024 afonsojramos. All rights reserved."
+category = "public.app-category.utilities"
+short_description = "Trakt to Discord Rich Presence"
+long_description = """
+Discrakt bridges your Trakt.tv watching status to Discord Rich Presence.
+It runs silently in your system tray and automatically updates your Discord
+status when you're watching movies or TV shows tracked by Trakt.tv.
+"""
+osx_minimum_system_version = "10.13"
