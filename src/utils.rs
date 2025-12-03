@@ -1,10 +1,18 @@
 use chrono::{DateTime, FixedOffset, SecondsFormat, Utc};
 use configparser::ini::Ini;
 use serde::Deserialize;
-use std::{env, io, path::PathBuf, time::Duration};
+use std::{env, io, path::PathBuf, sync::OnceLock, time::Duration};
 use ureq::AgentBuilder;
 
 const REFRESH_TOKEN_TTL_SECS: u64 = 60 * 60 * 24 * 30 * 3; // 3 months
+
+static USER_AGENT: OnceLock<String> = OnceLock::new();
+
+pub fn user_agent() -> &'static str {
+    USER_AGENT
+        .get_or_init(|| format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")))
+        .as_str()
+}
 
 #[derive(Deserialize, Debug)]
 pub struct TraktAccessToken {
@@ -99,6 +107,7 @@ impl Env {
         let response = match agent
             .post("https://api.trakt.tv/oauth/token")
             .set("Content-Type", "application/json")
+            .set("User-Agent", user_agent())
             .send_json(ureq::json!({
                 "code": code,
                 "client_id": self.trakt_client_id,
@@ -172,6 +181,7 @@ impl Env {
         let response = match agent
             .post("https://api.trakt.tv/oauth/token")
             .set("Content-Type", "application/json")
+            .set("User-Agent", user_agent())
             .send_json(ureq::json!({
                 "refresh_token": refresh_token,
                 "client_id": self.trakt_client_id,
