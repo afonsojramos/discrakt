@@ -39,6 +39,21 @@ fn hide_dock_icon() {
 #[cfg(not(target_os = "macos"))]
 fn hide_dock_icon() {}
 
+/// Initialize GTK on Linux.
+/// This must be called before creating any tray icons as tray-icon uses GTK on Linux.
+#[cfg(target_os = "linux")]
+fn init_gtk() -> Result<(), Box<dyn std::error::Error>> {
+    gtk::init().map_err(|e| {
+        tracing::error!("Failed to initialize GTK: {}", e);
+        Box::new(e) as Box<dyn std::error::Error>
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn init_gtk() -> Result<(), Box<dyn std::error::Error>> {
+    Ok(())
+}
+
 fn init_logging() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
@@ -89,6 +104,11 @@ impl ApplicationHandler for App {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
+
+    // Initialize GTK on Linux before any tray operations
+    // This must happen before EventLoop creation as tray-icon uses GTK on Linux
+    init_gtk()?;
+
     let mut cfg = load_config();
     cfg.check_oauth();
 

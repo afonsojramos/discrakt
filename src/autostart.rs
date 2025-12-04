@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-
+#[cfg(target_os = "macos")]
 const LAUNCHAGENT_LABEL: &str = "com.afonsojramos.discrakt";
 
 #[cfg(target_os = "macos")]
