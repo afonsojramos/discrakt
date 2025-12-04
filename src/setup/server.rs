@@ -199,15 +199,19 @@ fn unescape_json_string(s: &str) -> String {
 }
 
 /// Get the path to the config directory.
-fn config_dir_path() -> PathBuf {
+///
+/// # Errors
+///
+/// Returns an error if the platform's config directory cannot be determined.
+fn config_dir_path() -> Result<PathBuf, String> {
     dirs::config_dir()
-        .expect("Could not determine config directory")
-        .join("discrakt")
+        .map(|p| p.join("discrakt"))
+        .ok_or_else(|| "Could not determine config directory".to_string())
 }
 
 /// Write credentials to the config file.
 fn write_credentials(creds: &SubmittedCredentials) -> Result<PathBuf, String> {
-    let config_dir = config_dir_path();
+    let config_dir = config_dir_path()?;
 
     // Create config directory if it doesn't exist
     if !config_dir.exists() {
@@ -253,6 +257,16 @@ fn write_credentials(creds: &SubmittedCredentials) -> Result<PathBuf, String> {
     config
         .write(&config_path)
         .map_err(|e| format!("Failed to write config file: {}", e))?;
+
+    // Set restrictive file permissions (0600) on Unix to protect OAuth tokens
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let permissions = std::fs::Permissions::from_mode(0o600);
+        if let Err(e) = std::fs::set_permissions(&config_path, permissions) {
+            tracing::warn!("Failed to set restrictive permissions on credentials file: {}", e);
+        }
+    }
 
     tracing::info!("Credentials saved to {:?}", config_path);
     Ok(config_path)
@@ -398,15 +412,70 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
             }
 
             ("POST", "/submit") => {
-                // Read the request body
-                let mut body = String::new();
-                if let Err(e) = request.as_reader().read_to_string(&mut body) {
-                    tracing::error!("Failed to read request body: {}", e);
-                    let response = Response::from_string("Failed to read request")
-                        .with_status_code(StatusCode(400));
-                    let _ = request.respond(response);
-                    continue;
+                // Check Content-Length header to prevent memory exhaustion
+                const MAX_BODY_SIZE: usize = 64 * 1024; // 64KB limit
+                let content_length = request
+                    .headers()
+                    .iter()
+                    .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case("content-length"))
+                    .and_then(|h| h.value.as_str().parse::<usize>().ok());
+
+                if let Some(len) = content_length {
+                    if len > MAX_BODY_SIZE {
+                        tracing::warn!("Request body too large: {} bytes (max {})", len, MAX_BODY_SIZE);
+                        let response = Response::from_string("Request body too large")
+                            .with_status_code(StatusCode(413));
+                        let _ = request.respond(response);
+                        continue;
+                    }
                 }
+
+                // Read the request body with size limit using read_to_string with a wrapper
+                // that enforces the size limit
+                let body_result: Result<String, (StatusCode, String)> = {
+                    let capacity = content_length.unwrap_or(1024).min(MAX_BODY_SIZE);
+                    let mut body = Vec::with_capacity(capacity);
+                    let reader = request.as_reader();
+
+                    // Read in chunks to enforce size limit
+                    let mut buf = [0u8; 4096];
+                    let mut read_error = None;
+                    loop {
+                        match reader.read(&mut buf) {
+                            Ok(0) => break, // EOF
+                            Ok(n) => {
+                                body.extend_from_slice(&buf[..n]);
+                                if body.len() > MAX_BODY_SIZE {
+                                    tracing::warn!("Request body exceeded limit during reading: {} bytes", body.len());
+                                    read_error = Some((StatusCode(413), "Request body too large".to_string()));
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to read request body: {}", e);
+                                read_error = Some((StatusCode(400), "Failed to read request".to_string()));
+                                break;
+                            }
+                        }
+                    }
+
+                    match read_error {
+                        Some((code, msg)) => Err((code, msg)),
+                        None => String::from_utf8(body).map_err(|e| {
+                            tracing::error!("Request body is not valid UTF-8: {}", e);
+                            (StatusCode(400), "Invalid UTF-8 in request body".to_string())
+                        }),
+                    }
+                };
+
+                let body = match body_result {
+                    Ok(b) => b,
+                    Err((code, msg)) => {
+                        let response = Response::from_string(msg).with_status_code(code);
+                        let _ = request.respond(response);
+                        continue;
+                    }
+                };
 
                 tracing::debug!("Received form data: {}", body);
 
@@ -522,7 +591,13 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 
             ("GET", "/status") => {
                 // Return the current OAuth status
-                let state = oauth_state.lock().map(|s| s.clone()).unwrap_or(OAuthState::Idle);
+                let state = match oauth_state.lock() {
+                    Ok(s) => s.clone(),
+                    Err(poisoned) => {
+                        tracing::warn!("OAuth state mutex was poisoned, recovering with Idle state");
+                        poisoned.into_inner().clone()
+                    }
+                };
 
                 let response_json = match state {
                     OAuthState::Idle => json_response(&[("status", "idle")]),
@@ -547,6 +622,16 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 static ICON_BYTES: &[u8] = include_bytes!("../assets/icon.png");
                 let response = Response::from_data(ICON_BYTES).with_header(
                     tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"image/png"[..])
+                        .unwrap(),
+                );
+                let _ = request.respond(response);
+            }
+
+            ("GET", "/logo.svg") => {
+                // Serve the Discrakt wordmark logo
+                static LOGO_BYTES: &[u8] = include_bytes!("../../assets/discrakt-wordmark.svg");
+                let response = Response::from_data(LOGO_BYTES).with_header(
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"image/svg+xml"[..])
                         .unwrap(),
                 );
                 let _ = request.respond(response);

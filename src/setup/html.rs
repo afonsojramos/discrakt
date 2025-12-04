@@ -1,19 +1,29 @@
 //! HTML templates for the setup wizard.
+//!
+//! The setup wizard has three screens:
+//! 1. **Setup Form** - Collects Trakt username and optional IDs
+//! 2. **OAuth Screen** - Displays device code for Trakt authorization
+//! 3. **Success Screen** - Confirms setup completion
 
-/// Returns the main setup page HTML with the credential form.
-///
-/// After form submission, the page will display the OAuth device code
-/// and poll for authorization status.
-pub fn setup_page() -> String {
-    r##"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Discrakt Setup</title>
-    <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="shortcut icon" type="image/png" href="/favicon.png">
-    <style>
+// =============================================================================
+// Constants
+// =============================================================================
+
+const APP_NAME: &str = "Discrakt";
+const APP_TAGLINE: &str = "Trakt to Discord Rich Presence";
+const GITHUB_URL: &str = "https://github.com/afonsojramos/discrakt";
+
+const TRAKT_SETTINGS_URL: &str = "https://trakt.tv/settings";
+const TRAKT_ACTIVATE_URL: &str = "https://trakt.tv/activate";
+
+const COLOR_SUCCESS: &str = "#4CAF50";
+
+// =============================================================================
+// CSS Styles
+// =============================================================================
+
+fn styles() -> &'static str {
+    r##"
         * {
             box-sizing: border-box;
             margin: 0;
@@ -47,12 +57,9 @@ pub fn setup_page() -> String {
             margin-bottom: 24px;
         }
 
-        .logo h1 {
-            font-size: 2.5rem;
-            background: linear-gradient(135deg, #ed1c24 0%, #ff6b6b 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .logo-img {
+            max-width: 200px;
+            height: auto;
             margin-bottom: 8px;
         }
 
@@ -199,7 +206,6 @@ pub fn setup_page() -> String {
             color: #888;
         }
 
-        /* OAuth authorization screen styles */
         .auth-container {
             display: none;
             text-align: center;
@@ -293,116 +299,15 @@ pub fn setup_page() -> String {
         .hidden {
             display: none !important;
         }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="logo">
-            <h1>Discrakt</h1>
-            <p>Trakt to Discord Rich Presence</p>
-        </div>
+    "##
+}
 
-        <!-- Setup Form -->
-        <div id="setupForm-container">
-            <div class="info-box">
-                <h3>Getting Started</h3>
-                <ol>
-                    <li>Enter your Trakt username (required)</li>
-                    <li>Optionally create your own <a href="https://trakt.tv/oauth/applications/new" target="_blank">Trakt API Application</a> for a custom Client ID</li>
-                    <li>A default Client ID is provided if you leave it empty</li>
-                </ol>
-            </div>
+// =============================================================================
+// JavaScript
+// =============================================================================
 
-            <div class="error" id="error"></div>
-
-            <form id="setupForm" method="POST" action="/submit">
-                <div class="form-group">
-                    <label for="traktUser" class="required">Trakt Username</label>
-                    <input type="text" id="traktUser" name="traktUser"
-                           placeholder="Your Trakt username" required
-                           autocomplete="username">
-                    <p class="help-text">
-                        Find it at <a href="https://trakt.tv/settings" target="_blank">trakt.tv/settings</a>
-                    </p>
-                </div>
-
-                <div class="form-group">
-                    <label for="traktClientID">
-                        Trakt Client ID <span class="optional">(optional - uses default if empty)</span>
-                    </label>
-                    <input type="text" id="traktClientID" name="traktClientID"
-                           placeholder="Leave empty to use default Client ID"
-                           pattern="[a-f0-9]{64}"
-                           title="Client ID should be a 64-character hexadecimal string">
-                    <p class="help-text">
-                        Only needed if you want to use your own <a href="https://trakt.tv/oauth/applications" target="_blank">Trakt API application</a>
-                    </p>
-                </div>
-
-                <div class="form-group">
-                    <label for="discordApplicationID">
-                        Discord Application ID <span class="optional">(optional)</span>
-                    </label>
-                    <input type="text" id="discordApplicationID" name="discordApplicationID"
-                           placeholder="Custom Discord App ID (leave blank for default)"
-                           pattern="[0-9]{17,19}"
-                           title="Discord Application ID should be a 17-19 digit number">
-                    <p class="help-text">
-                        Only needed if you want a custom Discord presence.
-                        <a href="https://discord.com/developers/applications" target="_blank">Discord Developer Portal</a>
-                    </p>
-                </div>
-
-                <button type="submit" id="submitBtn">Login with Trakt</button>
-            </form>
-
-            <div class="footer">
-                <p>Configuration will be saved to your system config directory</p>
-                <p><a href="https://github.com/afonsojramos/discrakt" target="_blank">GitHub</a></p>
-            </div>
-        </div>
-
-        <!-- OAuth Authorization Screen -->
-        <div id="auth-container" class="auth-container">
-            <div class="auth-instructions">
-                <div class="step">
-                    <span class="step-number">1</span>
-                    <span>Copy the code below</span>
-                </div>
-                <div class="device-code" id="deviceCode">--------</div>
-                <div class="step">
-                    <span class="step-number">2</span>
-                    <span>Click the button to open Trakt and enter the code</span>
-                </div>
-            </div>
-
-            <a id="traktLink" href="https://trakt.tv/activate" target="_blank" class="btn">
-                Open Trakt to Authorize
-            </a>
-
-            <div id="statusMessage" class="status-message waiting">
-                <span class="spinner"></span>
-                Waiting for authorization...
-            </div>
-
-            <div class="footer">
-                <p>The code expires in <span id="expiresIn">10</span> minutes</p>
-                <p><a href="https://github.com/afonsojramos/discrakt" target="_blank">GitHub</a></p>
-            </div>
-        </div>
-
-        <!-- Success Screen -->
-        <div id="success-container" class="auth-container">
-            <h2 style="color: #4CAF50; margin-bottom: 24px;">Authorization Successful!</h2>
-            <p style="margin-bottom: 16px;">Your Trakt account has been connected.</p>
-            <p style="color: #888;">Discrakt is now starting. You can close this page.</p>
-            <p style="margin-top: 20px; color: #666; font-size: 0.9rem;">
-                Look for the Discrakt icon in your system tray.
-            </p>
-        </div>
-    </div>
-
-    <script>
+fn script() -> &'static str {
+    r##"
         let pollInterval = null;
         let pollIntervalMs = 5000;
 
@@ -416,7 +321,6 @@ pub fn setup_page() -> String {
             const formData = new FormData(this);
             const data = Object.fromEntries(formData.entries());
 
-            // Validate required fields
             if (!data.traktUser) {
                 errorDiv.textContent = 'Please fill in the Trakt Username field.';
                 errorDiv.classList.add('show');
@@ -429,20 +333,15 @@ pub fn setup_page() -> String {
             try {
                 const response = await fetch('/submit', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data),
                 });
 
                 if (response.ok) {
                     const result = await response.json();
-
                     if (result.user_code && result.verification_url) {
-                        // Show OAuth authorization screen
                         showAuthScreen(result);
                     } else {
-                        // No OAuth needed, show success
                         showSuccessScreen();
                     }
                 } else {
@@ -470,7 +369,6 @@ pub fn setup_page() -> String {
             const expiresInMinutes = Math.floor(deviceInfo.expires_in / 60);
             document.getElementById('expiresIn').textContent = expiresInMinutes;
 
-            // Start polling for authorization status
             pollIntervalMs = (deviceInfo.interval || 5) * 1000;
             startPolling();
         }
@@ -484,6 +382,11 @@ pub fn setup_page() -> String {
                 clearInterval(pollInterval);
                 pollInterval = null;
             }
+
+            // Auto-close tab after a short delay
+            setTimeout(() => {
+                window.close();
+            }, 2000);
         }
 
         function showError(message) {
@@ -508,7 +411,6 @@ pub fn setup_page() -> String {
                             showSuccessScreen();
                             break;
                         case 'pending':
-                            // Keep waiting
                             break;
                         case 'denied':
                             showError('Authorization was denied. Please restart Discrakt to try again.');
@@ -519,33 +421,184 @@ pub fn setup_page() -> String {
                         case 'error':
                             showError('An error occurred: ' + (result.message || 'Unknown error'));
                             break;
-                        default:
-                            // Unknown status, keep polling
-                            break;
                     }
                 } catch (err) {
-                    // Network error, keep polling
                     console.error('Polling error:', err);
                 }
             }, pollIntervalMs);
         }
-    </script>
-</body>
-</html>
-"##.to_string()
+    "##
 }
 
-/// Returns a simple success page HTML (used as fallback).
-#[allow(dead_code)]
-pub fn success_page() -> String {
-    r##"<!DOCTYPE html>
+// =============================================================================
+// HTML Components
+// =============================================================================
+
+fn header() -> String {
+    format!(
+        r##"
+        <div class="logo">
+            <img src="/logo.svg" alt="{app_name}" class="logo-img">
+            <p>{tagline}</p>
+        </div>
+        "##,
+        app_name = APP_NAME,
+        tagline = APP_TAGLINE
+    )
+}
+
+fn footer() -> String {
+    format!(
+        r##"
+        <div class="footer">
+            <p>Configuration will be saved to your system config directory</p>
+            <p><a href="{}" target="_blank">GitHub</a></p>
+        </div>
+        "##,
+        GITHUB_URL
+    )
+}
+
+fn setup_form() -> String {
+    format!(
+        r##"
+        <div id="setupForm-container">
+            <div class="info-box">
+                <h3>Getting Started</h3>
+                <p>Enter your Trakt username to connect your account.</p>
+            </div>
+
+            <div class="error" id="error"></div>
+
+            <form id="setupForm" method="POST" action="/submit">
+                <div class="form-group">
+                    <label for="traktUser" class="required">Trakt Username</label>
+                    <input type="text" id="traktUser" name="traktUser"
+                           placeholder="Your Trakt username" required
+                           autocomplete="username">
+                    <p class="help-text">
+                        Find it at <a href="{trakt_settings}" target="_blank">trakt.tv/settings</a>
+                    </p>
+                </div>
+
+                <button type="submit" id="submitBtn">Login with Trakt</button>
+            </form>
+
+            {footer}
+        </div>
+        "##,
+        trakt_settings = TRAKT_SETTINGS_URL,
+        footer = footer()
+    )
+}
+
+fn auth_screen() -> String {
+    format!(
+        r##"
+        <div id="auth-container" class="auth-container">
+            <div class="auth-instructions">
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <span>Copy the code below</span>
+                </div>
+                <div class="device-code" id="deviceCode">--------</div>
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <span>Click the button to open Trakt and enter the code</span>
+                </div>
+            </div>
+
+            <a id="traktLink" href="{trakt_activate}" target="_blank" class="btn">
+                Open Trakt to Authorize
+            </a>
+
+            <div id="statusMessage" class="status-message waiting">
+                <span class="spinner"></span>
+                Waiting for authorization...
+            </div>
+
+            <div class="footer">
+                <p>The code expires in <span id="expiresIn">10</span> minutes</p>
+                <p><a href="{github}" target="_blank">GitHub</a></p>
+            </div>
+        </div>
+        "##,
+        trakt_activate = TRAKT_ACTIVATE_URL,
+        github = GITHUB_URL
+    )
+}
+
+fn success_screen() -> String {
+    format!(
+        r##"
+        <div id="success-container" class="auth-container">
+            <h2 style="color: {color_success}; margin-bottom: 24px;">Authorization Successful!</h2>
+            <p style="margin-bottom: 16px;">Your Trakt account has been connected.</p>
+            <p style="color: #888;">{app_name} is now starting.</p>
+            <p style="margin-top: 20px; color: #666; font-size: 0.9rem;">
+                This tab will close automatically...
+            </p>
+        </div>
+        "##,
+        color_success = COLOR_SUCCESS,
+        app_name = APP_NAME
+    )
+}
+
+// =============================================================================
+// Public API
+// =============================================================================
+
+/// Returns the main setup page HTML.
+///
+/// The page includes:
+/// - Setup form for credentials
+/// - OAuth device code screen (shown after form submission)
+/// - Success screen (shown after authorization)
+pub fn setup_page() -> String {
+    format!(
+        r##"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Setup Complete - Discrakt</title>
+    <title>{app_name} Setup</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="shortcut icon" type="image/png" href="/favicon.png">
+    <style>{styles}</style>
+</head>
+<body>
+    <div class="container">
+        {header}
+        {setup_form}
+        {auth_screen}
+        {success_screen}
+    </div>
+    <script>{script}</script>
+</body>
+</html>"##,
+        app_name = APP_NAME,
+        styles = styles(),
+        header = header(),
+        setup_form = setup_form(),
+        auth_screen = auth_screen(),
+        success_screen = success_screen(),
+        script = script()
+    )
+}
+
+/// Returns a standalone success page HTML (used as fallback).
+#[allow(dead_code)]
+pub fn success_page() -> String {
+    format!(
+        r##"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Complete - {app_name}</title>
     <style>
-        body {
+        body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
             min-height: 100vh;
@@ -553,32 +606,34 @@ pub fn success_page() -> String {
             justify-content: center;
             align-items: center;
             color: #e0e0e0;
-        }
-        .container {
+        }}
+        .container {{
             text-align: center;
             background: rgba(255, 255, 255, 0.05);
             padding: 40px;
             border-radius: 16px;
             max-width: 400px;
-        }
-        h1 {
-            color: #4CAF50;
+        }}
+        h1 {{
+            color: {color_success};
             margin-bottom: 16px;
-        }
-        p {
+        }}
+        p {{
             color: #888;
             margin-bottom: 12px;
-        }
+        }}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Setup Complete!</h1>
         <p>Your credentials have been saved successfully.</p>
-        <p>Discrakt is now starting. You can close this page.</p>
-        <p style="font-size: 0.9rem;">Look for the Discrakt icon in your system tray.</p>
+        <p>{app_name} is now starting. You can close this page.</p>
+        <p style="font-size: 0.9rem;">Look for the {app_name} icon in your system tray.</p>
     </div>
 </body>
-</html>
-"##.to_string()
+</html>"##,
+        app_name = APP_NAME,
+        color_success = COLOR_SUCCESS
+    )
 }

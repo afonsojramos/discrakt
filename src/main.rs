@@ -109,7 +109,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This must happen before EventLoop creation as tray-icon uses GTK on Linux
     init_gtk()?;
 
-    let mut cfg = load_config();
+    let mut cfg = load_config().map_err(|e| {
+        tracing::error!("Failed to load configuration: {}", e);
+        e
+    })?;
     cfg.check_oauth();
 
     let app_state = AppState::new();

@@ -374,7 +374,13 @@ impl Env {
             }
         };
 
-        let json_response: Option<TraktAccessToken> = response.into_json().unwrap_or_default();
+        let json_response: Option<TraktAccessToken> = match response.into_json() {
+        Ok(token) => Some(token),
+        Err(e) => {
+            tracing::error!("Failed to parse token refresh response: {}", e);
+            None
+        }
+    };
 
         if let Some(json_response) = json_response {
             tracing::info!("Successfully refreshed OAuth access token");
@@ -433,24 +439,34 @@ fn find_config_file() -> Option<PathBuf> {
 /// Run the browser-based setup flow for first-time configuration.
 ///
 /// This starts a local HTTP server and opens a browser to collect credentials.
-/// Returns the setup result on success, or exits the process on failure/cancellation.
-fn run_browser_setup() -> setup::SetupResult {
+///
+/// # Errors
+///
+/// Returns an error if the setup server fails to start or the user cancels setup.
+fn run_browser_setup() -> Result<setup::SetupResult, String> {
     tracing::info!("Starting browser-based setup flow");
 
     match setup::run_setup_server() {
         Ok(result) => {
             tracing::info!("Setup completed successfully for user: {}", result.trakt_username);
-            result
+            Ok(result)
         }
         Err(e) => {
             tracing::error!("Setup failed: {}", e);
-            eprintln!("\nSetup was cancelled or failed. Please restart Discrakt to try again.");
-            std::process::exit(1);
+            Err(format!("Setup was cancelled or failed: {}. Please restart Discrakt to try again.", e))
         }
     }
 }
 
-pub fn load_config() -> Env {
+/// Load configuration from the credentials file.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Browser setup is required but fails
+/// - The config file cannot be read after setup
+/// - Required fields are missing from the config
+pub fn load_config() -> Result<Env, String> {
     let mut config = Ini::new();
     let config_file = find_config_file();
 
@@ -472,11 +488,13 @@ pub fn load_config() -> Env {
         tracing::info!("Credentials missing or incomplete, starting browser setup");
 
         // Run browser-based setup
-        let setup_result = run_browser_setup();
+        let setup_result = run_browser_setup()?;
 
         // Re-read the config file after setup
-        let config_path = find_config_file().expect("Config file should exist after setup");
-        config.load(&config_path).expect("Failed to load credentials.ini after setup");
+        let config_path = find_config_file()
+            .ok_or_else(|| "Config file should exist after setup".to_string())?;
+        config.load(&config_path)
+            .map_err(|e| format!("Failed to load credentials.ini after setup: {}", e))?;
 
         // Return config using setup result values (they're authoritative)
         // Use default Trakt Client ID if setup result has empty value
@@ -486,7 +504,7 @@ pub fn load_config() -> Env {
             setup_result.trakt_client_id
         };
 
-        return Env {
+        return Ok(Env {
             discord_client_id: setup_result.discord_app_id,
             trakt_username: setup_result.trakt_username,
             trakt_client_id,
@@ -500,14 +518,16 @@ pub fn load_config() -> Env {
                 .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
                 .unwrap_or_default(),
             tmdb_token: "21b815a75fec5f1e707e3da1b9b2d7e3".to_string(),
-        };
+        });
     }
 
     // Config file exists and has required fields
     let path = config_file.unwrap();
-    config.load(&path).expect("Failed to load credentials.ini");
+    config.load(&path)
+        .map_err(|e| format!("Failed to load credentials.ini: {}", e))?;
 
-    let trakt_username = config.get("Trakt API", "traktUser").expect("traktUser not found");
+    let trakt_username = config.get("Trakt API", "traktUser")
+        .ok_or_else(|| "traktUser not found in config".to_string())?;
 
     // Use default Trakt Client ID if not provided or empty
     let trakt_client_id = config
@@ -521,7 +541,7 @@ pub fn load_config() -> Env {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "826189107046121572".to_string());
 
-    Env {
+    Ok(Env {
         discord_client_id,
         trakt_username,
         trakt_client_id,
@@ -535,7 +555,7 @@ pub fn load_config() -> Env {
             .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
             .unwrap_or_default(),
         tmdb_token: "21b815a75fec5f1e707e3da1b9b2d7e3".to_string(),
-    }
+    })
 }
 
 fn set_oauth_tokens(json_response: &TraktAccessToken) {
@@ -567,7 +587,17 @@ fn set_oauth_tokens(json_response: &TraktAccessToken) {
         "OAuthRefreshTokenExpiresAt",
         Some(refresh_token_expires_at.to_string()),
     );
-    config.write(path).expect("Failed to write credentials.ini");
+    config.write(&path).expect("Failed to write credentials.ini");
+
+    // Set restrictive file permissions (0600) on Unix to protect OAuth tokens
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let permissions = std::fs::Permissions::from_mode(0o600);
+        if let Err(e) = std::fs::set_permissions(&path, permissions) {
+            tracing::warn!("Failed to set restrictive permissions on credentials file: {}", e);
+        }
+    }
 }
 
 pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {
