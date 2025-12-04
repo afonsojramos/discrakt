@@ -5,6 +5,7 @@ const LAUNCHAGENT_LABEL: &str = "com.afonsojramos.discrakt";
 mod macos {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
     use std::process::Command;
 
     fn launch_agents_dir() -> Option<PathBuf> {
