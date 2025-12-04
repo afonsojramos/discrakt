@@ -26,20 +26,30 @@ Plex Rich Presence alternatives:
 
 ## Setup
 
-1. Create an API Application on [Trakt.tv](https://trakt.tv/oauth/applications/new) (with scrobble capabilities and `urn:ietf:wg:oauth:2.0:oob` as the redirect uri) 
-2. Edit the `credentials.ini` file with the required Trakt username.
-3. Run the respective executable, and you're ready to start sharing your progress!
+1. Run the executable
+2. A setup wizard opens in your browser
+3. Enter your **Trakt username** — that's it!
 
-*P.S.* Discord needs to be running on the machine Discrakt is running on.
-*P.P.S.* Place the `credentials.ini` file in the same directory as the executable.
+A default Trakt Client ID is provided, so you don't need to create your own API application.
 
-*P.P.P.S.* If you want to store the configuration in a common location, the `credentials.ini` can also be stored in:
+*Note: Discord needs to be running on the same machine as Discrakt.*
+
+<details>
+<summary><strong>Advanced: Manual Configuration</strong></summary>
+
+If you prefer to configure manually or use your own Trakt API application:
+
+1. Create an API Application on [Trakt.tv](https://trakt.tv/oauth/applications/new) (with scrobble capabilities and `urn:ietf:wg:oauth:2.0:oob` as the redirect uri)
+2. Create a `credentials.ini` file with your settings
+3. Place it in one of these locations:
 
 |Operating System|Location|Example|
 |--------|-----|-------|
 |Linux|`$XDG_CONFIG_HOME`/discrakt or `$HOME`/.config/discrakt|/home/alice/.config/discrakt/credentials.ini|
 |macOS|`$HOME`/Library/Application Support/discrakt|/Users/Alice/Library/Application Support/discrakt/credentials.ini|
 |Windows|`%APPDATA%`\discrakt|C:\Users\Alice\AppData\Roaming\discrakt\credentials.ini|
+
+</details>
 
 ## Running executables
 
