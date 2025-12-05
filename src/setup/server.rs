@@ -8,16 +8,17 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use configparser::ini::Ini;
+use serde::{Deserialize, Serialize};
 use tiny_http::{Response, Server, StatusCode};
 
 use super::html;
 use crate::utils::{
-    poll_device_token, request_device_code, save_oauth_tokens, DeviceTokenPollResult,
-    TraktDeviceCode, DEFAULT_TRAKT_CLIENT_ID,
+    poll_device_token, request_device_code, save_oauth_tokens, set_restrictive_permissions,
+    DeviceTokenPollResult, TraktDeviceCode, DEFAULT_DISCORD_APP_ID, DEFAULT_TRAKT_CLIENT_ID,
 };
 
-/// Default Discord Application ID for Discrakt.
-const DEFAULT_DISCORD_APP_ID: &str = "826189107046121572";
+/// Maximum number of consecutive network errors before giving up.
+const MAX_NETWORK_ERRORS: u32 = 10;
 
 /// Result of the setup process.
 #[derive(Debug, Clone)]
@@ -31,11 +32,14 @@ pub struct SetupResult {
 }
 
 /// Credentials submitted via the setup form.
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 struct SubmittedCredentials {
+    #[serde(rename = "traktUser")]
     trakt_user: String,
+    #[serde(rename = "traktClientID", default)]
     trakt_client_id: String,
-    discord_app_id: Option<String>,
+    #[serde(rename = "discordApplicationID", default)]
+    discord_application_id: Option<String>,
 }
 
 /// State of the OAuth authorization flow.
@@ -59,143 +63,21 @@ enum OAuthState {
 /// This should be longer than the polling interval (5 seconds) to ensure at least one poll.
 const SUCCESS_GRACE_PERIOD: Duration = Duration::from_secs(8);
 
-/// Parse JSON body from the form submission.
-fn parse_json_body(body: &str) -> Option<SubmittedCredentials> {
-    // Simple JSON parsing without pulling in serde_json
-    // Expected format: {"traktUser":"...","traktClientID":"...","discordApplicationID":"..."}
-
-    let body = body.trim();
-    if !body.starts_with('{') || !body.ends_with('}') {
-        return None;
-    }
-
-    let inner = &body[1..body.len() - 1];
-
-    let mut trakt_user = None;
-    let mut trakt_client_id = None;
-    let mut discord_app_id = None;
-
-    // Split by comma, handling quoted strings
-    for part in split_json_fields(inner) {
-        let part = part.trim();
-        if let Some((key, value)) = parse_json_field(part) {
-            match key {
-                "traktUser" => trakt_user = Some(value),
-                "traktClientID" => trakt_client_id = Some(value),
-                "discordApplicationID" => {
-                    if !value.is_empty() {
-                        discord_app_id = Some(value);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    Some(SubmittedCredentials {
-        trakt_user: trakt_user?,
-        // trakt_client_id can be empty or missing; default to empty string
-        trakt_client_id: trakt_client_id.unwrap_or_default(),
-        discord_app_id,
-    })
+/// Response for device code info sent to the browser.
+#[derive(Serialize)]
+struct DeviceCodeResponse {
+    user_code: String,
+    verification_url: String,
+    expires_in: u64,
+    interval: u64,
 }
 
-/// Split JSON fields by comma, respecting quoted strings.
-fn split_json_fields(s: &str) -> Vec<String> {
-    let mut fields = Vec::new();
-    let mut current = String::new();
-    let mut in_string = false;
-    let mut escape_next = false;
-
-    for c in s.chars() {
-        if escape_next {
-            current.push(c);
-            escape_next = false;
-            continue;
-        }
-
-        match c {
-            '\\' => {
-                escape_next = true;
-                current.push(c);
-            }
-            '"' => {
-                in_string = !in_string;
-                current.push(c);
-            }
-            ',' if !in_string => {
-                fields.push(current.clone());
-                current.clear();
-            }
-            _ => current.push(c),
-        }
-    }
-
-    if !current.is_empty() {
-        fields.push(current);
-    }
-
-    fields
-}
-
-/// Parse a single JSON field like "key":"value".
-fn parse_json_field(s: &str) -> Option<(&str, String)> {
-    let s = s.trim();
-
-    // Find the colon separator
-    let colon_pos = s.find(':')?;
-    let key_part = s[..colon_pos].trim();
-    let value_part = s[colon_pos + 1..].trim();
-
-    // Extract key (remove quotes)
-    let key = key_part.trim_matches('"');
-
-    // Extract value (remove quotes and handle escapes)
-    let value = if value_part.starts_with('"') && value_part.ends_with('"') && value_part.len() >= 2
-    {
-        unescape_json_string(&value_part[1..value_part.len() - 1])
-    } else {
-        value_part.to_string()
-    };
-
-    Some((key, value))
-}
-
-/// Unescape a JSON string value.
-fn unescape_json_string(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            if let Some(&next) = chars.peek() {
-                match next {
-                    '"' | '\\' | '/' => {
-                        result.push(chars.next().unwrap());
-                    }
-                    'n' => {
-                        chars.next();
-                        result.push('\n');
-                    }
-                    'r' => {
-                        chars.next();
-                        result.push('\r');
-                    }
-                    't' => {
-                        chars.next();
-                        result.push('\t');
-                    }
-                    _ => result.push(c),
-                }
-            } else {
-                result.push(c);
-            }
-        } else {
-            result.push(c);
-        }
-    }
-
-    result
+/// Response for status endpoint.
+#[derive(Serialize)]
+struct StatusResponse {
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
 }
 
 /// Get the path to the config directory.
@@ -232,8 +114,10 @@ fn write_credentials(creds: &SubmittedCredentials) -> Result<PathBuf, String> {
     config.setstr("Trakt API", "traktClientID", Some(&creds.trakt_client_id));
 
     // Set Discord App ID if provided, otherwise use default
-    if let Some(ref discord_id) = creds.discord_app_id {
-        config.setstr("Discord", "applicationID", Some(discord_id));
+    if let Some(ref discord_id) = creds.discord_application_id {
+        if !discord_id.is_empty() {
+            config.setstr("Discord", "applicationID", Some(discord_id));
+        }
     }
 
     // Set default OAuth settings if not already present
@@ -250,7 +134,10 @@ fn write_credentials(creds: &SubmittedCredentials) -> Result<PathBuf, String> {
     if config.get("Trakt API", "OAuthRefreshToken").is_none() {
         config.setstr("Trakt API", "OAuthRefreshToken", Some(""));
     }
-    if config.get("Trakt API", "OAuthRefreshTokenExpiresAt").is_none() {
+    if config
+        .get("Trakt API", "OAuthRefreshTokenExpiresAt")
+        .is_none()
+    {
         config.setstr("Trakt API", "OAuthRefreshTokenExpiresAt", Some(""));
     }
 
@@ -258,15 +145,7 @@ fn write_credentials(creds: &SubmittedCredentials) -> Result<PathBuf, String> {
         .write(&config_path)
         .map_err(|e| format!("Failed to write config file: {}", e))?;
 
-    // Set restrictive file permissions (0600) on Unix to protect OAuth tokens
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let permissions = std::fs::Permissions::from_mode(0o600);
-        if let Err(e) = std::fs::set_permissions(&config_path, permissions) {
-            tracing::warn!("Failed to set restrictive permissions on credentials file: {}", e);
-        }
-    }
+    set_restrictive_permissions(&config_path);
 
     tracing::info!("Credentials saved to {:?}", config_path);
     Ok(config_path)
@@ -279,50 +158,6 @@ fn find_available_port() -> Option<u16> {
         .ok()
         .and_then(|listener| listener.local_addr().ok())
         .map(|addr| addr.port())
-}
-
-/// Format a simple JSON response without serde_json.
-fn json_response(fields: &[(&str, &str)]) -> String {
-    let mut json = String::from("{");
-    for (i, (key, value)) in fields.iter().enumerate() {
-        if i > 0 {
-            json.push(',');
-        }
-        // Simple JSON string escaping
-        let escaped_value = value.replace('\\', "\\\\").replace('"', "\\\"");
-        json.push_str(&format!("\"{}\":\"{}\"", key, escaped_value));
-    }
-    json.push('}');
-    json
-}
-
-/// Format a JSON response with numeric fields.
-fn json_response_with_numbers(
-    string_fields: &[(&str, &str)],
-    number_fields: &[(&str, u64)],
-) -> String {
-    let mut json = String::from("{");
-    let mut first = true;
-
-    for (key, value) in string_fields {
-        if !first {
-            json.push(',');
-        }
-        first = false;
-        let escaped_value = value.replace('\\', "\\\\").replace('"', "\\\"");
-        json.push_str(&format!("\"{}\":\"{}\"", key, escaped_value));
-    }
-
-    for (key, value) in number_fields {
-        if !first {
-            json.push(',');
-        }
-        first = false;
-        json.push_str(&format!("\"{}\":{}", key, value));
-    }
-
-    json.push('}');
-    json
 }
 
 /// Run the setup server and wait for credentials to be submitted.
@@ -354,6 +189,8 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
     let setup_complete = Arc::new(AtomicBool::new(false));
     let result: Arc<Mutex<Option<SetupResult>>> = Arc::new(Mutex::new(None));
     let oauth_state: Arc<Mutex<OAuthState>> = Arc::new(Mutex::new(OAuthState::Idle));
+    // Track if a polling thread is already running to prevent duplicate spawns
+    let polling_started = Arc::new(AtomicBool::new(false));
 
     // Open browser to setup page
     let url = format!("http://127.0.0.1:{}", port);
@@ -412,17 +249,49 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
             }
 
             ("POST", "/submit") => {
+                // Check Content-Type header
+                let content_type = request
+                    .headers()
+                    .iter()
+                    .find(|h| {
+                        h.field
+                            .as_str()
+                            .as_str()
+                            .eq_ignore_ascii_case("content-type")
+                    })
+                    .map(|h| h.value.as_str().to_string());
+
+                if !content_type
+                    .as_ref()
+                    .map(|ct| ct.starts_with("application/json"))
+                    .unwrap_or(false)
+                {
+                    let response = Response::from_string("Content-Type must be application/json")
+                        .with_status_code(StatusCode(415));
+                    let _ = request.respond(response);
+                    continue;
+                }
+
                 // Check Content-Length header to prevent memory exhaustion
                 const MAX_BODY_SIZE: usize = 64 * 1024; // 64KB limit
                 let content_length = request
                     .headers()
                     .iter()
-                    .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case("content-length"))
+                    .find(|h| {
+                        h.field
+                            .as_str()
+                            .as_str()
+                            .eq_ignore_ascii_case("content-length")
+                    })
                     .and_then(|h| h.value.as_str().parse::<usize>().ok());
 
                 if let Some(len) = content_length {
                     if len > MAX_BODY_SIZE {
-                        tracing::warn!("Request body too large: {} bytes (max {})", len, MAX_BODY_SIZE);
+                        tracing::warn!(
+                            "Request body too large: {} bytes (max {})",
+                            len,
+                            MAX_BODY_SIZE
+                        );
                         let response = Response::from_string("Request body too large")
                             .with_status_code(StatusCode(413));
                         let _ = request.respond(response);
@@ -430,8 +299,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                     }
                 }
 
-                // Read the request body with size limit using read_to_string with a wrapper
-                // that enforces the size limit
+                // Read the request body with size limit
                 let body_result: Result<String, (StatusCode, String)> = {
                     let capacity = content_length.unwrap_or(1024).min(MAX_BODY_SIZE);
                     let mut body = Vec::with_capacity(capacity);
@@ -446,14 +314,21 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                             Ok(n) => {
                                 body.extend_from_slice(&buf[..n]);
                                 if body.len() > MAX_BODY_SIZE {
-                                    tracing::warn!("Request body exceeded limit during reading: {} bytes", body.len());
-                                    read_error = Some((StatusCode(413), "Request body too large".to_string()));
+                                    tracing::warn!(
+                                        "Request body exceeded limit during reading: {} bytes",
+                                        body.len()
+                                    );
+                                    read_error = Some((
+                                        StatusCode(413),
+                                        "Request body too large".to_string(),
+                                    ));
                                     break;
                                 }
                             }
                             Err(e) => {
                                 tracing::error!("Failed to read request body: {}", e);
-                                read_error = Some((StatusCode(400), "Failed to read request".to_string()));
+                                read_error =
+                                    Some((StatusCode(400), "Failed to read request".to_string()));
                                 break;
                             }
                         }
@@ -479,111 +354,119 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 
                 tracing::debug!("Received form data: {}", body);
 
-                // Parse the JSON body
-                match parse_json_body(&body) {
-                    Some(creds) => {
-                        // Validate required fields (only trakt_user is required)
-                        if creds.trakt_user.is_empty() {
-                            let response = Response::from_string("Trakt Username is required")
-                                .with_status_code(StatusCode(400));
-                            let _ = request.respond(response);
-                            continue;
+                // Parse the JSON body using serde_json
+                let creds: SubmittedCredentials = match serde_json::from_str(&body) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::error!("Failed to parse JSON: {}", e);
+                        let response = Response::from_string(format!("Invalid JSON: {}", e))
+                            .with_status_code(StatusCode(400));
+                        let _ = request.respond(response);
+                        continue;
+                    }
+                };
+
+                // Validate required fields (only trakt_user is required)
+                if creds.trakt_user.is_empty() {
+                    let response = Response::from_string("Trakt Username is required")
+                        .with_status_code(StatusCode(400));
+                    let _ = request.respond(response);
+                    continue;
+                }
+
+                // Write credentials to config file
+                if let Err(e) = write_credentials(&creds) {
+                    tracing::error!("Failed to write credentials: {}", e);
+                    let response = Response::from_string(format!("Failed to save: {}", e))
+                        .with_status_code(StatusCode(500));
+                    let _ = request.respond(response);
+                    continue;
+                }
+
+                // Determine the client ID to use
+                let client_id = if creds.trakt_client_id.is_empty() {
+                    DEFAULT_TRAKT_CLIENT_ID.to_string()
+                } else {
+                    creds.trakt_client_id.clone()
+                };
+
+                let discord_id = creds
+                    .discord_application_id
+                    .clone()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| DEFAULT_DISCORD_APP_ID.to_string());
+
+                // Store the result (will be returned after OAuth completes)
+                if let Ok(mut result_guard) = result.lock() {
+                    *result_guard = Some(SetupResult {
+                        trakt_username: creds.trakt_user.clone(),
+                        trakt_client_id: client_id.clone(),
+                        discord_app_id: discord_id,
+                    });
+                }
+
+                // Start OAuth device flow
+                match request_device_code(&client_id) {
+                    Ok(device_code) => {
+                        tracing::info!(
+                            user_code = %device_code.user_code,
+                            verification_url = %device_code.verification_url,
+                            "Device code obtained, waiting for user authorization"
+                        );
+
+                        // Store device code info for polling
+                        if let Ok(mut state) = oauth_state.lock() {
+                            *state = OAuthState::Pending;
                         }
 
-                        // Write credentials to config file
-                        if let Err(e) = write_credentials(&creds) {
-                            tracing::error!("Failed to write credentials: {}", e);
-                            let response =
-                                Response::from_string(format!("Failed to save: {}", e))
-                                    .with_status_code(StatusCode(500));
-                            let _ = request.respond(response);
-                            continue;
-                        }
+                        // Start background polling thread (only if not already started)
+                        if polling_started
+                            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                            .is_ok()
+                        {
+                            let oauth_state_clone = Arc::clone(&oauth_state);
+                            let setup_complete_clone = Arc::clone(&setup_complete);
+                            let device_code_clone = device_code.clone();
+                            let client_id_clone = client_id.clone();
 
-                        // Determine the client ID to use
-                        let client_id = if creds.trakt_client_id.is_empty() {
-                            DEFAULT_TRAKT_CLIENT_ID.to_string()
+                            thread::spawn(move || {
+                                poll_oauth_in_background(
+                                    device_code_clone,
+                                    client_id_clone,
+                                    oauth_state_clone,
+                                    setup_complete_clone,
+                                );
+                            });
                         } else {
-                            creds.trakt_client_id.clone()
+                            tracing::warn!(
+                                "Polling thread already started, ignoring duplicate request"
+                            );
+                        }
+
+                        // Send response with device code info
+                        let response_data = DeviceCodeResponse {
+                            user_code: device_code.user_code,
+                            verification_url: device_code.verification_url,
+                            expires_in: device_code.expires_in,
+                            interval: device_code.interval,
                         };
 
-                        let discord_id = creds
-                            .discord_app_id
-                            .clone()
-                            .unwrap_or_else(|| DEFAULT_DISCORD_APP_ID.to_string());
+                        let response_json = serde_json::to_string(&response_data)
+                            .unwrap_or_else(|_| r#"{"error":"serialization failed"}"#.to_string());
 
-                        // Store the result (will be returned after OAuth completes)
-                        if let Ok(mut result_guard) = result.lock() {
-                            *result_guard = Some(SetupResult {
-                                trakt_username: creds.trakt_user.clone(),
-                                trakt_client_id: client_id.clone(),
-                                discord_app_id: discord_id,
-                            });
-                        }
-
-                        // Start OAuth device flow
-                        match request_device_code(&client_id) {
-                            Ok(device_code) => {
-                                tracing::info!(
-                                    user_code = %device_code.user_code,
-                                    verification_url = %device_code.verification_url,
-                                    "Device code obtained, waiting for user authorization"
-                                );
-
-                                // Store device code info for polling
-                                if let Ok(mut state) = oauth_state.lock() {
-                                    *state = OAuthState::Pending;
-                                }
-
-                                // Start background polling thread
-                                let oauth_state_clone = Arc::clone(&oauth_state);
-                                let setup_complete_clone = Arc::clone(&setup_complete);
-                                let device_code_clone = device_code.clone();
-                                let client_id_clone = client_id.clone();
-
-                                thread::spawn(move || {
-                                    poll_oauth_in_background(
-                                        device_code_clone,
-                                        client_id_clone,
-                                        oauth_state_clone,
-                                        setup_complete_clone,
-                                    );
-                                });
-
-                                // Send response with device code info
-                                let response_json = json_response_with_numbers(
-                                    &[
-                                        ("user_code", &device_code.user_code),
-                                        ("verification_url", &device_code.verification_url),
-                                    ],
-                                    &[
-                                        ("expires_in", device_code.expires_in),
-                                        ("interval", device_code.interval),
-                                    ],
-                                );
-
-                                let response = Response::from_string(response_json).with_header(
-                                    tiny_http::Header::from_bytes(
-                                        &b"Content-Type"[..],
-                                        &b"application/json"[..],
-                                    )
-                                    .unwrap(),
-                                );
-                                let _ = request.respond(response);
-                            }
-                            Err(e) => {
-                                tracing::error!("Failed to request device code: {}", e);
-                                let response =
-                                    Response::from_string(format!("OAuth error: {}", e))
-                                        .with_status_code(StatusCode(500));
-                                let _ = request.respond(response);
-                            }
-                        }
+                        let response = Response::from_string(response_json).with_header(
+                            tiny_http::Header::from_bytes(
+                                &b"Content-Type"[..],
+                                &b"application/json"[..],
+                            )
+                            .unwrap(),
+                        );
+                        let _ = request.respond(response);
                     }
-                    None => {
-                        tracing::error!("Failed to parse form data");
-                        let response =
-                            Response::from_string("Invalid form data").with_status_code(StatusCode(400));
+                    Err(e) => {
+                        tracing::error!("Failed to request device code: {}", e);
+                        let response = Response::from_string(format!("OAuth error: {}", e))
+                            .with_status_code(StatusCode(500));
                         let _ = request.respond(response);
                     }
                 }
@@ -591,24 +474,47 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 
             ("GET", "/status") => {
                 // Return the current OAuth status
+                // On mutex poisoning, reset to Idle state for safety
                 let state = match oauth_state.lock() {
                     Ok(s) => s.clone(),
                     Err(poisoned) => {
-                        tracing::warn!("OAuth state mutex was poisoned, recovering with Idle state");
-                        poisoned.into_inner().clone()
+                        tracing::warn!("OAuth state mutex was poisoned, resetting to Idle state");
+                        // Return Idle state instead of potentially corrupted state
+                        drop(poisoned.into_inner());
+                        OAuthState::Idle
                     }
                 };
 
-                let response_json = match state {
-                    OAuthState::Idle => json_response(&[("status", "idle")]),
-                    OAuthState::Pending => json_response(&[("status", "pending")]),
-                    OAuthState::Success(_) => json_response(&[("status", "success")]),
-                    OAuthState::Denied => json_response(&[("status", "denied")]),
-                    OAuthState::Expired => json_response(&[("status", "expired")]),
-                    OAuthState::Error(ref msg) => {
-                        json_response(&[("status", "error"), ("message", msg)])
-                    }
+                let response_data = match state {
+                    OAuthState::Idle => StatusResponse {
+                        status: "idle".to_string(),
+                        message: None,
+                    },
+                    OAuthState::Pending => StatusResponse {
+                        status: "pending".to_string(),
+                        message: None,
+                    },
+                    OAuthState::Success(_) => StatusResponse {
+                        status: "success".to_string(),
+                        message: None,
+                    },
+                    OAuthState::Denied => StatusResponse {
+                        status: "denied".to_string(),
+                        message: None,
+                    },
+                    OAuthState::Expired => StatusResponse {
+                        status: "expired".to_string(),
+                        message: None,
+                    },
+                    OAuthState::Error(msg) => StatusResponse {
+                        status: "error".to_string(),
+                        message: Some(msg),
+                    },
                 };
+
+                let response_json = serde_json::to_string(&response_data).unwrap_or_else(|_| {
+                    r#"{"status":"error","message":"serialization failed"}"#.to_string()
+                });
 
                 let response = Response::from_string(response_json).with_header(
                     tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
@@ -621,8 +527,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 // Serve the Discrakt icon as favicon
                 static ICON_BYTES: &[u8] = include_bytes!("../assets/icon.png");
                 let response = Response::from_data(ICON_BYTES).with_header(
-                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"image/png"[..])
-                        .unwrap(),
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"image/png"[..]).unwrap(),
                 );
                 let _ = request.respond(response);
             }
@@ -665,6 +570,7 @@ fn poll_oauth_in_background(
     let start_time = std::time::Instant::now();
     let timeout = Duration::from_secs(device_code.expires_in);
     let mut poll_interval = Duration::from_secs(device_code.interval);
+    let mut consecutive_errors: u32 = 0;
 
     loop {
         // Check if we've exceeded the timeout
@@ -698,6 +604,7 @@ fn poll_oauth_in_background(
             }
             DeviceTokenPollResult::Pending => {
                 tracing::debug!("Authorization pending, continuing to poll...");
+                consecutive_errors = 0; // Reset error counter on successful communication
                 continue;
             }
             DeviceTokenPollResult::Denied => {
@@ -730,12 +637,30 @@ fn poll_oauth_in_background(
             }
             DeviceTokenPollResult::SlowDown => {
                 tracing::warn!("Rate limited, slowing down polling");
-                poll_interval *= 2;
+                poll_interval = poll_interval.saturating_mul(2).min(Duration::from_secs(30));
+                consecutive_errors = 0;
                 continue;
             }
             DeviceTokenPollResult::Error(e) => {
-                tracing::error!("Error during token poll: {}", e);
-                // Network errors might be temporary, continue polling
+                consecutive_errors += 1;
+                tracing::error!(
+                    "Error during token poll ({}/{}): {}",
+                    consecutive_errors,
+                    MAX_NETWORK_ERRORS,
+                    e
+                );
+
+                // After too many consecutive errors, give up
+                if consecutive_errors >= MAX_NETWORK_ERRORS {
+                    tracing::error!("Too many consecutive network errors, giving up");
+                    if let Ok(mut state) = oauth_state.lock() {
+                        *state = OAuthState::Error("Network connectivity issues".to_string());
+                    }
+                    return;
+                }
+
+                // Exponential backoff for network errors
+                poll_interval = poll_interval.saturating_mul(2).min(Duration::from_secs(30));
                 continue;
             }
         }
@@ -750,68 +675,73 @@ mod tests {
     fn test_parse_json_body() {
         let json =
             r#"{"traktUser":"testuser","traktClientID":"abc123def456","discordApplicationID":""}"#;
-        let result = parse_json_body(json).unwrap();
+        let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "testuser");
         assert_eq!(result.trakt_client_id, "abc123def456");
-        assert!(result.discord_app_id.is_none()); // Empty string becomes None
+        assert_eq!(result.discord_application_id, Some("".to_string()));
     }
 
     #[test]
     fn test_parse_json_body_with_discord_id() {
         let json = r#"{"traktUser":"user","traktClientID":"client","discordApplicationID":"123456789012345678"}"#;
-        let result = parse_json_body(json).unwrap();
+        let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(
-            result.discord_app_id,
+            result.discord_application_id,
             Some("123456789012345678".to_string())
         );
     }
 
     #[test]
     fn test_parse_json_body_with_escaped_chars() {
-        let json =
-            r#"{"traktUser":"test\"user","traktClientID":"abc","discordApplicationID":""}"#;
-        let result = parse_json_body(json).unwrap();
+        let json = r#"{"traktUser":"test\"user","traktClientID":"abc","discordApplicationID":""}"#;
+        let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "test\"user");
     }
 
     #[test]
     fn test_parse_json_body_with_empty_client_id() {
         let json = r#"{"traktUser":"testuser","traktClientID":"","discordApplicationID":""}"#;
-        let result = parse_json_body(json).unwrap();
+        let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "testuser");
         assert_eq!(result.trakt_client_id, ""); // Empty client ID is allowed
-        assert!(result.discord_app_id.is_none());
     }
 
     #[test]
     fn test_parse_json_body_without_client_id() {
-        let json = r#"{"traktUser":"testuser","discordApplicationID":""}"#;
-        let result = parse_json_body(json).unwrap();
+        let json = r#"{"traktUser":"testuser"}"#;
+        let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "testuser");
         assert_eq!(result.trakt_client_id, ""); // Missing client ID defaults to empty
-        assert!(result.discord_app_id.is_none());
+        assert!(result.discord_application_id.is_none());
     }
 
     #[test]
-    fn test_unescape_json_string() {
-        assert_eq!(unescape_json_string(r#"hello\"world"#), "hello\"world");
-        assert_eq!(unescape_json_string(r#"line1\nline2"#), "line1\nline2");
-        assert_eq!(unescape_json_string(r#"tab\there"#), "tab\there");
+    fn test_status_response_serialization() {
+        let response = StatusResponse {
+            status: "success".to_string(),
+            message: None,
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert_eq!(json, r#"{"status":"success"}"#);
+
+        let response_with_msg = StatusResponse {
+            status: "error".to_string(),
+            message: Some("Something went wrong".to_string()),
+        };
+        let json = serde_json::to_string(&response_with_msg).unwrap();
+        assert!(json.contains("\"status\":\"error\""));
+        assert!(json.contains("\"message\":\"Something went wrong\""));
     }
 
     #[test]
-    fn test_json_response() {
-        let json = json_response(&[("status", "success"), ("message", "OK")]);
-        assert!(json.contains("\"status\":\"success\""));
-        assert!(json.contains("\"message\":\"OK\""));
-    }
-
-    #[test]
-    fn test_json_response_with_numbers() {
-        let json = json_response_with_numbers(
-            &[("user_code", "ABC123")],
-            &[("expires_in", 600), ("interval", 5)],
-        );
+    fn test_device_code_response_serialization() {
+        let response = DeviceCodeResponse {
+            user_code: "ABC123".to_string(),
+            verification_url: "https://trakt.tv/activate".to_string(),
+            expires_in: 600,
+            interval: 5,
+        };
+        let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"user_code\":\"ABC123\""));
         assert!(json.contains("\"expires_in\":600"));
         assert!(json.contains("\"interval\":5"));

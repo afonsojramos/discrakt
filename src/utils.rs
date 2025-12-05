@@ -6,7 +6,10 @@ use ureq::AgentBuilder;
 
 use crate::setup;
 
-const REFRESH_TOKEN_TTL_SECS: u64 = 60 * 60 * 24 * 30 * 3; // 3 months
+/// Refresh token time-to-live in seconds (3 months).
+/// Trakt refresh tokens are valid for 3 months from creation.
+/// See: https://trakt.docs.apiary.io/#reference/authentication-oauth
+const REFRESH_TOKEN_TTL_SECS: u64 = 60 * 60 * 24 * 30 * 3;
 
 /// Response from the Trakt device code endpoint.
 #[derive(Deserialize, Debug, Clone)]
@@ -19,8 +22,32 @@ pub struct TraktDeviceCode {
 }
 
 /// Default Trakt Client ID for Discrakt.
-/// Users can override this by providing their own Client ID in the setup form or config file.
-pub const DEFAULT_TRAKT_CLIENT_ID: &str = "32a43d99b2f5866c2bc52d2b189b842b66459a60d7ddbb370a265864d4251115";
+///
+/// This is the official Discrakt application registered with Trakt.tv.
+/// It is intentionally embedded in the source code for ease of setup.
+///
+/// **Rate limits are per-user, not per-client-id**, so all users sharing this
+/// client ID have independent rate limits based on their OAuth tokens.
+/// See: https://trakt.docs.apiary.io/#introduction/rate-limiting
+///
+/// Users can override this by providing their own Client ID in the setup form
+/// or config file if they prefer to use their own Trakt application.
+pub const DEFAULT_TRAKT_CLIENT_ID: &str =
+    "32a43d99b2f5866c2bc52d2b189b842b66459a60d7ddbb370a265864d4251115";
+
+/// Default Discord Application ID for Discrakt.
+///
+/// This is the official Discrakt Discord application that displays the Rich Presence.
+/// It is intentionally embedded for ease of setup. Users can override this in the
+/// config file if they want to use their own Discord application with custom assets.
+pub const DEFAULT_DISCORD_APP_ID: &str = "826189107046121572";
+
+/// Default TMDB API token for fetching movie/show artwork.
+///
+/// This is a public API token registered for Discrakt. TMDB API tokens are
+/// designed to be embedded in client applications and have generous rate limits.
+/// See: https://developer.themoviedb.org/docs/faq
+pub const DEFAULT_TMDB_TOKEN: &str = "21b815a75fec5f1e707e3da1b9b2d7e3";
 
 static USER_AGENT: OnceLock<String> = OnceLock::new();
 
@@ -114,10 +141,7 @@ pub fn request_device_code(trakt_client_id: &str) -> Result<TraktDeviceCode, Str
 ///
 /// This should be called repeatedly at the interval specified in the device code response.
 /// Returns the poll result indicating success, pending, or an error condition.
-pub fn poll_device_token(
-    trakt_client_id: &str,
-    device_code: &str,
-) -> DeviceTokenPollResult {
+pub fn poll_device_token(trakt_client_id: &str, device_code: &str) -> DeviceTokenPollResult {
     let agent = AgentBuilder::new()
         .timeout_read(Duration::from_secs(10))
         .timeout_write(Duration::from_secs(10))
@@ -133,12 +157,10 @@ pub fn poll_device_token(
         }));
 
     match response {
-        Ok(resp) => {
-            match resp.into_json::<TraktAccessToken>() {
-                Ok(token) => DeviceTokenPollResult::Success(token),
-                Err(e) => DeviceTokenPollResult::Error(format!("Failed to parse token: {}", e)),
-            }
-        }
+        Ok(resp) => match resp.into_json::<TraktAccessToken>() {
+            Ok(token) => DeviceTokenPollResult::Success(token),
+            Err(e) => DeviceTokenPollResult::Error(format!("Failed to parse token: {}", e)),
+        },
         Err(ureq::Error::Status(400, _)) => DeviceTokenPollResult::Pending,
         Err(ureq::Error::Status(404, _)) => DeviceTokenPollResult::InvalidCode,
         Err(ureq::Error::Status(409, _)) => DeviceTokenPollResult::AlreadyUsed,
@@ -348,8 +370,7 @@ impl Env {
                 "refresh_token": refresh_token,
                 "client_id": self.trakt_client_id,
                 "grant_type": "refresh_token",
-            }))
-        {
+            })) {
             Ok(response) => response,
             Err(ureq::Error::Status(400, response)) => {
                 tracing::warn!("Refresh token is invalid or expired, need to reauthorize");
@@ -375,12 +396,12 @@ impl Env {
         };
 
         let json_response: Option<TraktAccessToken> = match response.into_json() {
-        Ok(token) => Some(token),
-        Err(e) => {
-            tracing::error!("Failed to parse token refresh response: {}", e);
-            None
-        }
-    };
+            Ok(token) => Some(token),
+            Err(e) => {
+                tracing::error!("Failed to parse token refresh response: {}", e);
+                None
+            }
+        };
 
         if let Some(json_response) = json_response {
             tracing::info!("Successfully refreshed OAuth access token");
@@ -448,12 +469,18 @@ fn run_browser_setup() -> Result<setup::SetupResult, String> {
 
     match setup::run_setup_server() {
         Ok(result) => {
-            tracing::info!("Setup completed successfully for user: {}", result.trakt_username);
+            tracing::info!(
+                "Setup completed successfully for user: {}",
+                result.trakt_username
+            );
             Ok(result)
         }
         Err(e) => {
             tracing::error!("Setup failed: {}", e);
-            Err(format!("Setup was cancelled or failed: {}. Please restart Discrakt to try again.", e))
+            Err(format!(
+                "Setup was cancelled or failed: {}. Please restart Discrakt to try again.",
+                e
+            ))
         }
     }
 }
@@ -491,9 +518,10 @@ pub fn load_config() -> Result<Env, String> {
         let setup_result = run_browser_setup()?;
 
         // Re-read the config file after setup
-        let config_path = find_config_file()
-            .ok_or_else(|| "Config file should exist after setup".to_string())?;
-        config.load(&config_path)
+        let config_path =
+            find_config_file().ok_or_else(|| "Config file should exist after setup".to_string())?;
+        config
+            .load(&config_path)
             .map_err(|e| format!("Failed to load credentials.ini after setup: {}", e))?;
 
         // Return config using setup result values (they're authoritative)
@@ -517,16 +545,18 @@ pub fn load_config() -> Result<Env, String> {
             trakt_refresh_token_expires_at: config
                 .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
                 .unwrap_or_default(),
-            tmdb_token: "21b815a75fec5f1e707e3da1b9b2d7e3".to_string(),
+            tmdb_token: DEFAULT_TMDB_TOKEN.to_string(),
         });
     }
 
     // Config file exists and has required fields
     let path = config_file.unwrap();
-    config.load(&path)
+    config
+        .load(&path)
         .map_err(|e| format!("Failed to load credentials.ini: {}", e))?;
 
-    let trakt_username = config.get("Trakt API", "traktUser")
+    let trakt_username = config
+        .get("Trakt API", "traktUser")
         .ok_or_else(|| "traktUser not found in config".to_string())?;
 
     // Use default Trakt Client ID if not provided or empty
@@ -539,7 +569,7 @@ pub fn load_config() -> Result<Env, String> {
     let discord_client_id = config
         .get("Discord", "applicationID")
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "826189107046121572".to_string());
+        .unwrap_or_else(|| DEFAULT_DISCORD_APP_ID.to_string());
 
     Ok(Env {
         discord_client_id,
@@ -554,19 +584,25 @@ pub fn load_config() -> Result<Env, String> {
         trakt_refresh_token_expires_at: config
             .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
             .unwrap_or_default(),
-        tmdb_token: "21b815a75fec5f1e707e3da1b9b2d7e3".to_string(),
+        tmdb_token: DEFAULT_TMDB_TOKEN.to_string(),
     })
 }
 
 fn set_oauth_tokens(json_response: &TraktAccessToken) {
+    let path = match find_config_file() {
+        Some(p) => p,
+        None => {
+            tracing::error!("Could not find credentials.ini to save OAuth tokens");
+            return;
+        }
+    };
+
     let mut config = Ini::new_cs();
-    let config_file = find_config_file();
+    if let Err(e) = config.load(&path) {
+        tracing::error!("Failed to load credentials.ini: {}", e);
+        return;
+    }
 
-    let path = config_file.expect("Could not find credentials.ini");
-
-    config
-        .load(path.clone())
-        .expect("Failed to load credentials.ini");
     config.setstr(
         "Trakt API",
         "OAuthAccessToken",
@@ -587,18 +623,32 @@ fn set_oauth_tokens(json_response: &TraktAccessToken) {
         "OAuthRefreshTokenExpiresAt",
         Some(refresh_token_expires_at.to_string()),
     );
-    config.write(&path).expect("Failed to write credentials.ini");
 
-    // Set restrictive file permissions (0600) on Unix to protect OAuth tokens
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let permissions = std::fs::Permissions::from_mode(0o600);
-        if let Err(e) = std::fs::set_permissions(&path, permissions) {
-            tracing::warn!("Failed to set restrictive permissions on credentials file: {}", e);
-        }
+    if let Err(e) = config.write(&path) {
+        tracing::error!("Failed to write credentials.ini: {}", e);
+        return;
+    }
+
+    set_restrictive_permissions(&path);
+}
+
+/// Set restrictive file permissions (0600) on Unix to protect sensitive files.
+#[cfg(unix)]
+pub fn set_restrictive_permissions(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let permissions = std::fs::Permissions::from_mode(0o600);
+    if let Err(e) = std::fs::set_permissions(path, permissions) {
+        tracing::warn!(
+            "Failed to set restrictive permissions on {}: {}",
+            path.display(),
+            e
+        );
     }
 }
+
+/// No-op on non-Unix platforms.
+#[cfg(not(unix))]
+pub fn set_restrictive_permissions(_path: &std::path::Path) {}
 
 pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {
     let start_date = DateTime::parse_from_rfc3339(&trakt_response.started_at).unwrap();

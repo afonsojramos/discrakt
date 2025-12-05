@@ -392,7 +392,7 @@ fn script() -> &'static str {
         function showError(message) {
             const statusDiv = document.getElementById('statusMessage');
             statusDiv.className = 'status-message error';
-            statusDiv.innerHTML = message;
+            statusDiv.textContent = message;
 
             if (pollInterval) {
                 clearInterval(pollInterval);
