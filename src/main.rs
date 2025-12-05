@@ -9,7 +9,7 @@ use discrakt::{
     state::AppState,
     trakt::Trakt,
     tray::{Tray, TrayCommand},
-    utils::{get_watch_stats, load_config},
+    utils::{get_watch_stats, load_config, DEFAULT_DISCORD_APP_ID},
 };
 use std::{
     sync::{
@@ -114,7 +114,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_state_clone = Arc::clone(&app_state);
     let should_quit_clone = Arc::clone(&should_quit);
 
-    let discord_client_id = cfg.discord_client_id.clone();
     let trakt_client_id = cfg.trakt_client_id.clone();
     let trakt_username = cfg.trakt_username.clone();
     let trakt_access_token = cfg.trakt_access_token.clone();
@@ -122,7 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Spawn background polling thread
     let polling_handle = thread::spawn(move || {
-        let mut discord = match Discord::new(discord_client_id) {
+        let mut discord = match Discord::new(DEFAULT_DISCORD_APP_ID.to_string()) {
             Ok(d) => d,
             Err(e) => {
                 tracing::error!("Failed to create Discord client: {e}");

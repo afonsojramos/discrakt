@@ -15,9 +15,21 @@ A simple app that acts as a bridge between [Discord](https://discord.com/) and [
 
 <p align="center"><img src="./docs/demo/profile-status.png" width="260px" alt="Profile Status"><p>
 
+<p align="center"><img src="./docs/demo/tray.png" width="260px" alt="Tray"><p>
+
 **Protip**: If you are already using Plex, and would like to link it with Trakt, you can use the [Plex-Trakt-Scrobbler](https://github.com/trakt/Plex-Trakt-Scrobbler) plugin.
 
 If you already know **Trakt** and how awesome it is this is definitely the best option, as it works **more reliably** and with some extra benefits over the other implementations, such as registering your watch status **wherever you are watching** (TV, phone, across the world, etc.), **in whatever app you are watching on** (Netflix, Roku, Plex, HBO Max), as long as you have a single device running **Discord** and **Discrakt**.
+
+## Features
+
+- Separate Discord Rich Presence apps for Movies and TV Shows
+- Movie posters and show artwork displayed via TMDB
+- Direct links to IMDB and Trakt pages
+- Progress bar showing watch percentage
+- System tray integration with pause/resume functionality
+- Start at login option
+- Browser-based setup wizard with OAuth device flow
 
 Plex Rich Presence alternatives:
 

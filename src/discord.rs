@@ -6,11 +6,12 @@ use std::{thread::sleep, time::Duration};
 
 use crate::{
     trakt::{Trakt, TraktWatchingResponse},
-    utils::{get_watch_stats, MediaType},
+    utils::{get_watch_stats, MediaType, DEFAULT_DISCORD_APP_ID_MOVIE, DEFAULT_DISCORD_APP_ID_SHOW},
 };
 
 pub struct Discord {
     client: DiscordIpcClient,
+    current_app_id: String,
 }
 
 #[derive(Default)]
@@ -30,7 +31,41 @@ impl Discord {
             tracing::error!("Couldn't create Discord client: {e}");
             e
         })?;
-        Ok(Discord { client })
+        Ok(Discord {
+            client,
+            current_app_id: discord_client_id,
+        })
+    }
+
+    /// Switch to a different Discord application ID if needed.
+    /// Returns true if a switch occurred.
+    fn switch_app_id(&mut self, new_app_id: &str) -> bool {
+        if self.current_app_id == new_app_id {
+            return false;
+        }
+
+        tracing::info!(
+            "Switching Discord app ID from {} to {}",
+            self.current_app_id,
+            new_app_id
+        );
+
+        // Close existing connection
+        let _ = self.client.close();
+
+        // Create new client with new app ID
+        match DiscordIpcClient::new(new_app_id) {
+            Ok(new_client) => {
+                self.client = new_client;
+                self.current_app_id = new_app_id.to_string();
+                self.connect();
+                true
+            }
+            Err(e) => {
+                tracing::error!("Failed to create Discord client with new app ID: {e}");
+                false
+            }
+        }
     }
 
     pub fn connect(&mut self) {
@@ -55,6 +90,14 @@ impl Discord {
         tmdb_token: String,
     ) {
         let mut payload_data = Payload::default();
+
+        // Switch to appropriate Discord app ID based on media type
+        let target_app_id = match trakt_response.r#type.as_str() {
+            "movie" => DEFAULT_DISCORD_APP_ID_MOVIE,
+            "episode" => DEFAULT_DISCORD_APP_ID_SHOW,
+            _ => DEFAULT_DISCORD_APP_ID_MOVIE, // Default to movie for unknown types
+        };
+        self.switch_app_id(target_app_id);
 
         let img_url = match trakt_response.r#type.as_str() {
             "movie" => {

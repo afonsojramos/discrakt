@@ -14,7 +14,7 @@ use tiny_http::{Response, Server, StatusCode};
 use super::html;
 use crate::utils::{
     poll_device_token, request_device_code, save_oauth_tokens, set_restrictive_permissions,
-    DeviceTokenPollResult, TraktDeviceCode, DEFAULT_DISCORD_APP_ID, DEFAULT_TRAKT_CLIENT_ID,
+    DeviceTokenPollResult, TraktDeviceCode, DEFAULT_TRAKT_CLIENT_ID,
 };
 
 /// Maximum number of consecutive network errors before giving up.
@@ -27,8 +27,6 @@ pub struct SetupResult {
     pub trakt_username: String,
     /// Trakt Client ID
     pub trakt_client_id: String,
-    /// Discord Application ID (uses default if not provided)
-    pub discord_app_id: String,
 }
 
 /// Credentials submitted via the setup form.
@@ -38,8 +36,6 @@ struct SubmittedCredentials {
     trakt_user: String,
     #[serde(rename = "traktClientID", default)]
     trakt_client_id: String,
-    #[serde(rename = "discordApplicationID", default)]
-    discord_application_id: Option<String>,
 }
 
 /// State of the OAuth authorization flow.
@@ -112,13 +108,6 @@ fn write_credentials(creds: &SubmittedCredentials) -> Result<PathBuf, String> {
     // Set the required fields
     config.setstr("Trakt API", "traktUser", Some(&creds.trakt_user));
     config.setstr("Trakt API", "traktClientID", Some(&creds.trakt_client_id));
-
-    // Set Discord App ID if provided, otherwise use default
-    if let Some(ref discord_id) = creds.discord_application_id {
-        if !discord_id.is_empty() {
-            config.setstr("Discord", "applicationID", Some(discord_id));
-        }
-    }
 
     // Set default OAuth settings if not already present
     // Enable OAuth by default so the OAuth flow starts after setup completes
@@ -390,18 +379,11 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                     creds.trakt_client_id.clone()
                 };
 
-                let discord_id = creds
-                    .discord_application_id
-                    .clone()
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| DEFAULT_DISCORD_APP_ID.to_string());
-
                 // Store the result (will be returned after OAuth completes)
                 if let Ok(mut result_guard) = result.lock() {
                     *result_guard = Some(SetupResult {
                         trakt_username: creds.trakt_user.clone(),
                         trakt_client_id: client_id.clone(),
-                        discord_app_id: discord_id,
                     });
                 }
 
@@ -678,29 +660,18 @@ mod tests {
         let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "testuser");
         assert_eq!(result.trakt_client_id, "abc123def456");
-        assert_eq!(result.discord_application_id, Some("".to_string()));
-    }
-
-    #[test]
-    fn test_parse_json_body_with_discord_id() {
-        let json = r#"{"traktUser":"user","traktClientID":"client","discordApplicationID":"123456789012345678"}"#;
-        let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            result.discord_application_id,
-            Some("123456789012345678".to_string())
-        );
     }
 
     #[test]
     fn test_parse_json_body_with_escaped_chars() {
-        let json = r#"{"traktUser":"test\"user","traktClientID":"abc","discordApplicationID":""}"#;
+        let json = r#"{"traktUser":"test\"user","traktClientID":"abc"}"#;
         let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "test\"user");
     }
 
     #[test]
     fn test_parse_json_body_with_empty_client_id() {
-        let json = r#"{"traktUser":"testuser","traktClientID":"","discordApplicationID":""}"#;
+        let json = r#"{"traktUser":"testuser","traktClientID":""}"#;
         let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "testuser");
         assert_eq!(result.trakt_client_id, ""); // Empty client ID is allowed
@@ -712,7 +683,6 @@ mod tests {
         let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "testuser");
         assert_eq!(result.trakt_client_id, ""); // Missing client ID defaults to empty
-        assert!(result.discord_application_id.is_none());
     }
 
     #[test]
