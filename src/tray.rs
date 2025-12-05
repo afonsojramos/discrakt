@@ -1,3 +1,8 @@
+//! System tray implementation using tray-icon (Windows/macOS).
+//!
+//! This module is only compiled on non-Linux platforms.
+//! Linux uses the ksni-based implementation in tray_linux.rs.
+
 use crossbeam_channel::Receiver;
 use std::sync::{Arc, RwLock};
 use tray_icon::{

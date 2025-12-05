@@ -39,18 +39,9 @@ fn hide_dock_icon() {
 #[cfg(not(target_os = "macos"))]
 fn hide_dock_icon() {}
 
-/// Initialize GTK on Linux.
-/// This must be called before creating any tray icons as tray-icon uses GTK on Linux.
-#[cfg(target_os = "linux")]
-fn init_gtk() -> Result<(), Box<dyn std::error::Error>> {
-    gtk::init().map_err(|e| {
-        tracing::error!("Failed to initialize GTK: {}", e);
-        Box::new(e) as Box<dyn std::error::Error>
-    })
-}
-
-#[cfg(not(target_os = "linux"))]
-fn init_gtk() -> Result<(), Box<dyn std::error::Error>> {
+/// Platform-specific initialization.
+/// On Linux, ksni handles its own D-Bus event loop, so no GTK initialization is needed.
+fn platform_init() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
@@ -83,6 +74,9 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, _event_loop: &ActiveEventLoop, _id: WindowId, _event: WindowEvent) {}
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // Wake up every second to update tray status
+        event_loop.set_control_flow(ControlFlow::wait_duration(Duration::from_secs(1)));
+
         if let Some(ref mut tray) = self.tray {
             // Update tray status from shared state
             tray.update_status(&self.app_state);
@@ -105,9 +99,8 @@ impl ApplicationHandler for App {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
 
-    // Initialize GTK on Linux before any tray operations
-    // This must happen before EventLoop creation as tray-icon uses GTK on Linux
-    init_gtk()?;
+    // Platform-specific initialization
+    platform_init()?;
 
     let mut cfg = load_config().map_err(|e| {
         tracing::error!("Failed to load configuration: {}", e);
@@ -215,7 +208,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create event loop - must be done on main thread
     let event_loop = EventLoop::new()?;
-    event_loop.set_control_flow(ControlFlow::Wait);
 
     // Hide dock icon AFTER event loop creates NSApplication
     hide_dock_icon();
