@@ -1,11 +1,11 @@
-use std::path::PathBuf;
-
+#[cfg(target_os = "macos")]
 const LAUNCHAGENT_LABEL: &str = "com.afonsojramos.discrakt";
 
 #[cfg(target_os = "macos")]
 mod macos {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
     use std::process::Command;
 
     fn launch_agents_dir() -> Option<PathBuf> {
@@ -117,8 +117,11 @@ mod macos {
             .map_err(|e| format!("Failed to write plist: {}", e))?;
 
         // Load the launch agent
+        let plist_path_str = plist_path
+            .to_str()
+            .ok_or("Plist path contains invalid UTF-8")?;
         let _ = Command::new("launchctl")
-            .args(["load", "-w", plist_path.to_str().unwrap()])
+            .args(["load", "-w", plist_path_str])
             .output();
 
         tracing::info!("Autostart enabled via LaunchAgent");
@@ -130,9 +133,11 @@ mod macos {
 
         if plist_path.exists() {
             // Unload the launch agent first
-            let _ = Command::new("launchctl")
-                .args(["unload", "-w", plist_path.to_str().unwrap()])
-                .output();
+            if let Some(plist_path_str) = plist_path.to_str() {
+                let _ = Command::new("launchctl")
+                    .args(["unload", "-w", plist_path_str])
+                    .output();
+            }
 
             fs::remove_file(&plist_path).map_err(|e| format!("Failed to remove plist: {}", e))?;
 
