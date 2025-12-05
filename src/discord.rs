@@ -6,7 +6,9 @@ use std::{thread::sleep, time::Duration};
 
 use crate::{
     trakt::{Trakt, TraktWatchingResponse},
-    utils::{get_watch_stats, MediaType, DEFAULT_DISCORD_APP_ID_MOVIE, DEFAULT_DISCORD_APP_ID_SHOW},
+    utils::{
+        get_watch_stats, MediaType, DEFAULT_DISCORD_APP_ID_MOVIE, DEFAULT_DISCORD_APP_ID_SHOW,
+    },
 };
 
 pub struct Discord {
@@ -72,10 +74,9 @@ impl Discord {
         loop {
             if self.client.connect().is_ok() {
                 break;
-            } else {
-                tracing::warn!("Failed to connect to Discord, retrying in 15 seconds");
-                sleep(Duration::from_secs(15));
             }
+            tracing::warn!("Failed to connect to Discord, retrying in 15 seconds");
+            sleep(Duration::from_secs(15));
         }
     }
 
@@ -93,9 +94,8 @@ impl Discord {
 
         // Switch to appropriate Discord app ID based on media type
         let target_app_id = match trakt_response.r#type.as_str() {
-            "movie" => DEFAULT_DISCORD_APP_ID_MOVIE,
             "episode" => DEFAULT_DISCORD_APP_ID_SHOW,
-            _ => DEFAULT_DISCORD_APP_ID_MOVIE, // Default to movie for unknown types
+            _ => DEFAULT_DISCORD_APP_ID_MOVIE, // Default to movie for unknown types (including "movie")
         };
         self.switch_app_id(target_app_id);
 

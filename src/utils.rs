@@ -313,7 +313,6 @@ impl Env {
                 }
                 DeviceTokenPollResult::Pending => {
                     tracing::debug!("Authorization pending, continuing to poll...");
-                    continue;
                 }
                 DeviceTokenPollResult::InvalidCode => {
                     tracing::error!("Invalid device code");
@@ -338,12 +337,10 @@ impl Env {
                 DeviceTokenPollResult::SlowDown => {
                     tracing::warn!("Rate limited, slowing down polling");
                     poll_interval *= 2;
-                    continue;
                 }
                 DeviceTokenPollResult::Error(e) => {
                     tracing::error!("Error during token poll: {}", e);
                     // Network errors might be temporary, continue polling
-                    continue;
                 }
             }
         }

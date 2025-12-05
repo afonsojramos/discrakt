@@ -22,8 +22,9 @@ const COLOR_SUCCESS: &str = "#4CAF50";
 // CSS Styles
 // =============================================================================
 
+#[allow(clippy::too_many_lines)]
 fn styles() -> &'static str {
-    r##"
+    r#"
         * {
             box-sizing: border-box;
             margin: 0;
@@ -299,15 +300,16 @@ fn styles() -> &'static str {
         .hidden {
             display: none !important;
         }
-    "##
+    "#
 }
 
 // =============================================================================
 // JavaScript
 // =============================================================================
 
+#[allow(clippy::too_many_lines)]
 fn script() -> &'static str {
-    r##"
+    r"
         let pollInterval = null;
         let pollIntervalMs = 5000;
 
@@ -427,7 +429,7 @@ fn script() -> &'static str {
                 }
             }, pollIntervalMs);
         }
-    "##
+    "
 }
 
 // =============================================================================
@@ -436,32 +438,30 @@ fn script() -> &'static str {
 
 fn header() -> String {
     format!(
-        r##"
+        r#"
         <div class="logo">
-            <img src="/logo.svg" alt="{app_name}" class="logo-img">
-            <p>{tagline}</p>
+            <img src="/logo.svg" alt="{APP_NAME}" class="logo-img">
+            <p>{APP_TAGLINE}</p>
         </div>
-        "##,
-        app_name = APP_NAME,
-        tagline = APP_TAGLINE
+        "#
     )
 }
 
 fn footer() -> String {
     format!(
-        r##"
+        r#"
         <div class="footer">
             <p>Configuration will be saved to your system config directory</p>
-            <p><a href="{}" target="_blank">GitHub</a></p>
+            <p><a href="{GITHUB_URL}" target="_blank">GitHub</a></p>
         </div>
-        "##,
-        GITHUB_URL
+        "#
     )
 }
 
 fn setup_form() -> String {
+    let footer = footer();
     format!(
-        r##"
+        r#"
         <div id="setupForm-container">
             <div class="info-box">
                 <h3>Getting Started</h3>
@@ -477,7 +477,7 @@ fn setup_form() -> String {
                            placeholder="Your Trakt username" required
                            autocomplete="username">
                     <p class="help-text">
-                        Find it at <a href="{trakt_settings}" target="_blank">trakt.tv/settings</a>
+                        Find it at <a href="{TRAKT_SETTINGS_URL}" target="_blank">trakt.tv/settings</a>
                     </p>
                 </div>
 
@@ -486,15 +486,13 @@ fn setup_form() -> String {
 
             {footer}
         </div>
-        "##,
-        trakt_settings = TRAKT_SETTINGS_URL,
-        footer = footer()
+        "#
     )
 }
 
 fn auth_screen() -> String {
     format!(
-        r##"
+        r#"
         <div id="auth-container" class="auth-container">
             <div class="auth-instructions">
                 <div class="step">
@@ -508,7 +506,7 @@ fn auth_screen() -> String {
                 </div>
             </div>
 
-            <a id="traktLink" href="{trakt_activate}" target="_blank" class="btn">
+            <a id="traktLink" href="{TRAKT_ACTIVATE_URL}" target="_blank" class="btn">
                 Open Trakt to Authorize
             </a>
 
@@ -519,29 +517,25 @@ fn auth_screen() -> String {
 
             <div class="footer">
                 <p>The code expires in <span id="expiresIn">10</span> minutes</p>
-                <p><a href="{github}" target="_blank">GitHub</a></p>
+                <p><a href="{GITHUB_URL}" target="_blank">GitHub</a></p>
             </div>
         </div>
-        "##,
-        trakt_activate = TRAKT_ACTIVATE_URL,
-        github = GITHUB_URL
+        "#
     )
 }
 
 fn success_screen() -> String {
     format!(
-        r##"
+        r#"
         <div id="success-container" class="auth-container">
-            <h2 style="color: {color_success}; margin-bottom: 24px;">Authorization Successful!</h2>
+            <h2 style="color: {COLOR_SUCCESS}; margin-bottom: 24px;">Authorization Successful!</h2>
             <p style="margin-bottom: 16px;">Your Trakt account has been connected.</p>
-            <p style="color: #888;">{app_name} is now starting.</p>
+            <p style="color: #888;">{APP_NAME} is now starting.</p>
             <p style="margin-top: 20px; color: #666; font-size: 0.9rem;">
                 This tab will close automatically...
             </p>
         </div>
-        "##,
-        color_success = COLOR_SUCCESS,
-        app_name = APP_NAME
+        "#
     )
 }
 
@@ -556,13 +550,19 @@ fn success_screen() -> String {
 /// - OAuth device code screen (shown after form submission)
 /// - Success screen (shown after authorization)
 pub fn setup_page() -> String {
+    let styles = styles();
+    let header = header();
+    let setup_form = setup_form();
+    let auth_screen = auth_screen();
+    let success_screen = success_screen();
+    let script = script();
     format!(
-        r##"<!DOCTYPE html>
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{app_name} Setup</title>
+    <title>{APP_NAME} Setup</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="shortcut icon" type="image/png" href="/favicon.png">
     <style>{styles}</style>
@@ -576,14 +576,7 @@ pub fn setup_page() -> String {
     </div>
     <script>{script}</script>
 </body>
-</html>"##,
-        app_name = APP_NAME,
-        styles = styles(),
-        header = header(),
-        setup_form = setup_form(),
-        auth_screen = auth_screen(),
-        success_screen = success_screen(),
-        script = script()
+</html>"#
     )
 }
 
@@ -591,14 +584,14 @@ pub fn setup_page() -> String {
 #[allow(dead_code)]
 pub fn success_page() -> String {
     format!(
-        r##"<!DOCTYPE html>
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Setup Complete - {app_name}</title>
+    <title>Setup Complete - {APP_NAME}</title>
     <style>
-        body {{
+        body {{{{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
             min-height: 100vh;
@@ -606,34 +599,32 @@ pub fn success_page() -> String {
             justify-content: center;
             align-items: center;
             color: #e0e0e0;
-        }}
-        .container {{
+        }}}}
+        .container {{{{
             text-align: center;
             background: rgba(255, 255, 255, 0.05);
             padding: 40px;
             border-radius: 16px;
             max-width: 400px;
-        }}
-        h1 {{
-            color: {color_success};
+        }}}}
+        h1 {{{{
+            color: {COLOR_SUCCESS};
             margin-bottom: 16px;
-        }}
-        p {{
+        }}}}
+        p {{{{
             color: #888;
             margin-bottom: 12px;
-        }}
+        }}}}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Setup Complete!</h1>
         <p>Your credentials have been saved successfully.</p>
-        <p>{app_name} is now starting. You can close this page.</p>
-        <p style="font-size: 0.9rem;">Look for the {app_name} icon in your system tray.</p>
+        <p>{APP_NAME} is now starting. You can close this page.</p>
+        <p style="font-size: 0.9rem;">Look for the {APP_NAME} icon in your system tray.</p>
     </div>
 </body>
-</html>"##,
-        app_name = APP_NAME,
-        color_success = COLOR_SUCCESS
+</html>"#
     )
 }
