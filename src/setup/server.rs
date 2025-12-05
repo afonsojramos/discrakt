@@ -14,11 +14,14 @@ use tiny_http::{Response, Server, StatusCode};
 use super::html;
 use crate::utils::{
     poll_device_token, request_device_code, save_oauth_tokens, set_restrictive_permissions,
-    DeviceTokenPollResult, TraktDeviceCode, DEFAULT_DISCORD_APP_ID, DEFAULT_TRAKT_CLIENT_ID,
+    DeviceTokenPollResult, TraktDeviceCode, DEFAULT_TRAKT_CLIENT_ID,
 };
 
 /// Maximum number of consecutive network errors before giving up.
 const MAX_NETWORK_ERRORS: u32 = 10;
+
+/// Maximum request body size (64KB limit).
+const MAX_BODY_SIZE: usize = 64 * 1024;
 
 /// Result of the setup process.
 #[derive(Debug, Clone)]
@@ -27,8 +30,6 @@ pub struct SetupResult {
     pub trakt_username: String,
     /// Trakt Client ID
     pub trakt_client_id: String,
-    /// Discord Application ID (uses default if not provided)
-    pub discord_app_id: String,
 }
 
 /// Credentials submitted via the setup form.
@@ -38,8 +39,6 @@ struct SubmittedCredentials {
     trakt_user: String,
     #[serde(rename = "traktClientID", default)]
     trakt_client_id: String,
-    #[serde(rename = "discordApplicationID", default)]
-    discord_application_id: Option<String>,
 }
 
 /// State of the OAuth authorization flow.
@@ -98,7 +97,7 @@ fn write_credentials(creds: &SubmittedCredentials) -> Result<PathBuf, String> {
     // Create config directory if it doesn't exist
     if !config_dir.exists() {
         std::fs::create_dir_all(&config_dir)
-            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+            .map_err(|e| format!("Failed to create config directory: {e}"))?;
     }
 
     let config_path = config_dir.join("credentials.ini");
@@ -112,13 +111,6 @@ fn write_credentials(creds: &SubmittedCredentials) -> Result<PathBuf, String> {
     // Set the required fields
     config.setstr("Trakt API", "traktUser", Some(&creds.trakt_user));
     config.setstr("Trakt API", "traktClientID", Some(&creds.trakt_client_id));
-
-    // Set Discord App ID if provided, otherwise use default
-    if let Some(ref discord_id) = creds.discord_application_id {
-        if !discord_id.is_empty() {
-            config.setstr("Discord", "applicationID", Some(discord_id));
-        }
-    }
 
     // Set default OAuth settings if not already present
     // Enable OAuth by default so the OAuth flow starts after setup completes
@@ -143,7 +135,7 @@ fn write_credentials(creds: &SubmittedCredentials) -> Result<PathBuf, String> {
 
     config
         .write(&config_path)
-        .map_err(|e| format!("Failed to write config file: {}", e))?;
+        .map_err(|e| format!("Failed to write config file: {e}"))?;
 
     set_restrictive_permissions(&config_path);
 
@@ -177,11 +169,12 @@ fn find_available_port() -> Option<u16> {
 /// - The browser fails to open
 /// - Writing credentials fails
 /// - OAuth authorization fails
+#[allow(clippy::too_many_lines)]
 pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
     let port = find_available_port().ok_or("Failed to find available port")?;
-    let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
+    let addr: SocketAddr = format!("127.0.0.1:{port}").parse()?;
 
-    let server = Server::http(addr).map_err(|e| format!("Failed to start HTTP server: {}", e))?;
+    let server = Server::http(addr).map_err(|e| format!("Failed to start HTTP server: {e}"))?;
 
     tracing::info!("Setup server started at http://{}", addr);
 
@@ -193,7 +186,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
     let polling_started = Arc::new(AtomicBool::new(false));
 
     // Open browser to setup page
-    let url = format!("http://127.0.0.1:{}", port);
+    let url = format!("http://127.0.0.1:{port}");
     tracing::info!("Opening browser to {}", url);
 
     if webbrowser::open(&url).is_err() {
@@ -202,7 +195,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
         println!("  Discrakt Setup");
         println!("========================================\n");
         println!("Please open your browser and navigate to:");
-        println!("  {}\n", url);
+        println!("  {url}\n");
     }
 
     // Handle requests until setup is complete and grace period has passed.
@@ -236,7 +229,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
         tracing::debug!("Received {} request for {}", method, url);
 
         match (method.as_str(), url.as_str()) {
-            ("GET", "/") | ("GET", "/index.html") => {
+            ("GET", "/" | "/index.html") => {
                 let html = html::setup_page();
                 let response = Response::from_string(html).with_header(
                     tiny_http::Header::from_bytes(
@@ -263,8 +256,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 
                 if !content_type
                     .as_ref()
-                    .map(|ct| ct.starts_with("application/json"))
-                    .unwrap_or(false)
+                    .is_some_and(|ct| ct.starts_with("application/json"))
                 {
                     let response = Response::from_string("Content-Type must be application/json")
                         .with_status_code(StatusCode(415));
@@ -273,7 +265,6 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 }
 
                 // Check Content-Length header to prevent memory exhaustion
-                const MAX_BODY_SIZE: usize = 64 * 1024; // 64KB limit
                 let content_length = request
                     .headers()
                     .iter()
@@ -359,7 +350,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                     Ok(c) => c,
                     Err(e) => {
                         tracing::error!("Failed to parse JSON: {}", e);
-                        let response = Response::from_string(format!("Invalid JSON: {}", e))
+                        let response = Response::from_string(format!("Invalid JSON: {e}"))
                             .with_status_code(StatusCode(400));
                         let _ = request.respond(response);
                         continue;
@@ -377,7 +368,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 // Write credentials to config file
                 if let Err(e) = write_credentials(&creds) {
                     tracing::error!("Failed to write credentials: {}", e);
-                    let response = Response::from_string(format!("Failed to save: {}", e))
+                    let response = Response::from_string(format!("Failed to save: {e}"))
                         .with_status_code(StatusCode(500));
                     let _ = request.respond(response);
                     continue;
@@ -390,18 +381,11 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                     creds.trakt_client_id.clone()
                 };
 
-                let discord_id = creds
-                    .discord_application_id
-                    .clone()
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| DEFAULT_DISCORD_APP_ID.to_string());
-
                 // Store the result (will be returned after OAuth completes)
                 if let Ok(mut result_guard) = result.lock() {
                     *result_guard = Some(SetupResult {
                         trakt_username: creds.trakt_user.clone(),
                         trakt_client_id: client_id.clone(),
-                        discord_app_id: discord_id,
                     });
                 }
 
@@ -465,7 +449,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                     }
                     Err(e) => {
                         tracing::error!("Failed to request device code: {}", e);
-                        let response = Response::from_string(format!("OAuth error: {}", e))
+                        let response = Response::from_string(format!("OAuth error: {e}"))
                             .with_status_code(StatusCode(500));
                         let _ = request.respond(response);
                     }
@@ -523,7 +507,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 let _ = request.respond(response);
             }
 
-            ("GET", "/favicon.ico") | ("GET", "/favicon.png") => {
+            ("GET", "/favicon.ico" | "/favicon.png") => {
                 // Serve the Discrakt icon as favicon
                 static ICON_BYTES: &[u8] = include_bytes!("../assets/icon.png");
                 let response = Response::from_data(ICON_BYTES).with_header(
@@ -561,6 +545,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 }
 
 /// Poll for OAuth authorization in the background.
+#[allow(clippy::needless_pass_by_value)]
 fn poll_oauth_in_background(
     device_code: TraktDeviceCode,
     client_id: String,
@@ -605,7 +590,6 @@ fn poll_oauth_in_background(
             DeviceTokenPollResult::Pending => {
                 tracing::debug!("Authorization pending, continuing to poll...");
                 consecutive_errors = 0; // Reset error counter on successful communication
-                continue;
             }
             DeviceTokenPollResult::Denied => {
                 tracing::error!("User denied authorization");
@@ -639,7 +623,6 @@ fn poll_oauth_in_background(
                 tracing::warn!("Rate limited, slowing down polling");
                 poll_interval = poll_interval.saturating_mul(2).min(Duration::from_secs(30));
                 consecutive_errors = 0;
-                continue;
             }
             DeviceTokenPollResult::Error(e) => {
                 consecutive_errors += 1;
@@ -661,7 +644,6 @@ fn poll_oauth_in_background(
 
                 // Exponential backoff for network errors
                 poll_interval = poll_interval.saturating_mul(2).min(Duration::from_secs(30));
-                continue;
             }
         }
     }
@@ -678,29 +660,18 @@ mod tests {
         let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "testuser");
         assert_eq!(result.trakt_client_id, "abc123def456");
-        assert_eq!(result.discord_application_id, Some("".to_string()));
-    }
-
-    #[test]
-    fn test_parse_json_body_with_discord_id() {
-        let json = r#"{"traktUser":"user","traktClientID":"client","discordApplicationID":"123456789012345678"}"#;
-        let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            result.discord_application_id,
-            Some("123456789012345678".to_string())
-        );
     }
 
     #[test]
     fn test_parse_json_body_with_escaped_chars() {
-        let json = r#"{"traktUser":"test\"user","traktClientID":"abc","discordApplicationID":""}"#;
+        let json = r#"{"traktUser":"test\"user","traktClientID":"abc"}"#;
         let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "test\"user");
     }
 
     #[test]
     fn test_parse_json_body_with_empty_client_id() {
-        let json = r#"{"traktUser":"testuser","traktClientID":"","discordApplicationID":""}"#;
+        let json = r#"{"traktUser":"testuser","traktClientID":""}"#;
         let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "testuser");
         assert_eq!(result.trakt_client_id, ""); // Empty client ID is allowed
@@ -712,7 +683,6 @@ mod tests {
         let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "testuser");
         assert_eq!(result.trakt_client_id, ""); // Missing client ID defaults to empty
-        assert!(result.discord_application_id.is_none());
     }
 
     #[test]

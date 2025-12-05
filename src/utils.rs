@@ -35,12 +35,21 @@ pub struct TraktDeviceCode {
 pub const DEFAULT_TRAKT_CLIENT_ID: &str =
     "32a43d99b2f5866c2bc52d2b189b842b66459a60d7ddbb370a265864d4251115";
 
-/// Default Discord Application ID for Discrakt.
+/// Default Discord Application ID for Movies.
 ///
-/// This is the official Discrakt Discord application that displays the Rich Presence.
+/// This is the official Discrakt Discord application for movie Rich Presence.
 /// It is intentionally embedded for ease of setup. Users can override this in the
 /// config file if they want to use their own Discord application with custom assets.
-pub const DEFAULT_DISCORD_APP_ID: &str = "826189107046121572";
+pub const DEFAULT_DISCORD_APP_ID_MOVIE: &str = "1446321426893111436";
+
+/// Default Discord Application ID for TV Shows.
+///
+/// This is the official Discrakt Discord application for TV show Rich Presence.
+pub const DEFAULT_DISCORD_APP_ID_SHOW: &str = "1446117100568445001";
+
+/// Default Discord Application ID (used when media type is unknown).
+/// Defaults to the movie application.
+pub const DEFAULT_DISCORD_APP_ID: &str = DEFAULT_DISCORD_APP_ID_MOVIE;
 
 /// Default TMDB API token for fetching movie/show artwork.
 ///
@@ -70,7 +79,6 @@ pub struct TraktAccessToken {
 use crate::trakt::TraktWatchingResponse;
 
 pub struct Env {
-    pub discord_client_id: String,
     pub trakt_username: String,
     pub trakt_client_id: String,
     pub trakt_oauth_enabled: bool,
@@ -305,7 +313,6 @@ impl Env {
                 }
                 DeviceTokenPollResult::Pending => {
                     tracing::debug!("Authorization pending, continuing to poll...");
-                    continue;
                 }
                 DeviceTokenPollResult::InvalidCode => {
                     tracing::error!("Invalid device code");
@@ -330,12 +337,10 @@ impl Env {
                 DeviceTokenPollResult::SlowDown => {
                     tracing::warn!("Rate limited, slowing down polling");
                     poll_interval *= 2;
-                    continue;
                 }
                 DeviceTokenPollResult::Error(e) => {
                     tracing::error!("Error during token poll: {}", e);
                     // Network errors might be temporary, continue polling
-                    continue;
                 }
             }
         }
@@ -533,7 +538,6 @@ pub fn load_config() -> Result<Env, String> {
         };
 
         return Ok(Env {
-            discord_client_id: setup_result.discord_app_id,
             trakt_username: setup_result.trakt_username,
             trakt_client_id,
             trakt_oauth_enabled: config
@@ -565,14 +569,7 @@ pub fn load_config() -> Result<Env, String> {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| DEFAULT_TRAKT_CLIENT_ID.to_string());
 
-    // Check for custom Discord App ID
-    let discord_client_id = config
-        .get("Discord", "applicationID")
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| DEFAULT_DISCORD_APP_ID.to_string());
-
     Ok(Env {
-        discord_client_id,
         trakt_username,
         trakt_client_id,
         trakt_oauth_enabled: config

@@ -3,7 +3,7 @@ const LAUNCHAGENT_LABEL: &str = "com.afonsojramos.discrakt";
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use super::*;
+    use super::LAUNCHAGENT_LABEL;
     use std::fs;
     use std::path::PathBuf;
     use std::process::Command;
@@ -13,7 +13,7 @@ mod macos {
     }
 
     fn plist_path() -> Option<PathBuf> {
-        launch_agents_dir().map(|d| d.join(format!("{}.plist", LAUNCHAGENT_LABEL)))
+        launch_agents_dir().map(|d| d.join(format!("{LAUNCHAGENT_LABEL}.plist")))
     }
 
     fn app_path() -> Option<PathBuf> {
@@ -35,7 +35,7 @@ mod macos {
     }
 
     pub fn is_enabled() -> bool {
-        plist_path().map(|p| p.exists()).unwrap_or(false)
+        plist_path().is_some_and(|p| p.exists())
     }
 
     pub fn enable() -> Result<(), String> {
@@ -45,24 +45,23 @@ mod macos {
         // Ensure LaunchAgents directory exists
         if let Some(dir) = plist_path.parent() {
             fs::create_dir_all(dir)
-                .map_err(|e| format!("Failed to create LaunchAgents dir: {}", e))?;
+                .map_err(|e| format!("Failed to create LaunchAgents dir: {e}"))?;
         }
 
         // Determine if we're launching an app bundle or binary
-        let (program_path, program_args) =
-            if app_path.extension().map(|e| e == "app").unwrap_or(false) {
-                // App bundle - use open command
-                (
-                    "/usr/bin/open".to_string(),
-                    format!(
-                        "<string>-a</string>\n      <string>{}</string>",
-                        app_path.display()
-                    ),
-                )
-            } else {
-                // Direct binary
-                (app_path.display().to_string(), String::new())
-            };
+        let (program_path, program_args) = if app_path.extension().is_some_and(|e| e == "app") {
+            // App bundle - use open command
+            (
+                "/usr/bin/open".to_string(),
+                format!(
+                    "<string>-a</string>\n      <string>{}</string>",
+                    app_path.display()
+                ),
+            )
+        } else {
+            // Direct binary
+            (app_path.display().to_string(), String::new())
+        };
 
         let plist_content = if program_args.is_empty() {
             format!(
@@ -71,10 +70,10 @@ mod macos {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{}</string>
+    <string>{LAUNCHAGENT_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-      <string>{}</string>
+      <string>{program_path}</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -84,8 +83,7 @@ mod macos {
     <string>Interactive</string>
 </dict>
 </plist>
-"#,
-                LAUNCHAGENT_LABEL, program_path
+"#
             )
         } else {
             format!(
@@ -94,11 +92,11 @@ mod macos {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{}</string>
+    <string>{LAUNCHAGENT_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-      <string>{}</string>
-      {}
+      <string>{program_path}</string>
+      {program_args}
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -108,13 +106,11 @@ mod macos {
     <string>Interactive</string>
 </dict>
 </plist>
-"#,
-                LAUNCHAGENT_LABEL, program_path, program_args
+"#
             )
         };
 
-        fs::write(&plist_path, plist_content)
-            .map_err(|e| format!("Failed to write plist: {}", e))?;
+        fs::write(&plist_path, plist_content).map_err(|e| format!("Failed to write plist: {e}"))?;
 
         // Load the launch agent
         let plist_path_str = plist_path
@@ -139,7 +135,7 @@ mod macos {
                     .output();
             }
 
-            fs::remove_file(&plist_path).map_err(|e| format!("Failed to remove plist: {}", e))?;
+            fs::remove_file(&plist_path).map_err(|e| format!("Failed to remove plist: {e}"))?;
 
             tracing::info!("Autostart disabled");
         }
