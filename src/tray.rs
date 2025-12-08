@@ -4,6 +4,7 @@
 //! Linux uses the ksni-based implementation in tray_linux.rs.
 
 use crossbeam_channel::Receiver;
+use image::RgbaImage;
 use std::sync::{Arc, RwLock};
 use tray_icon::{
     menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem},
@@ -12,6 +13,36 @@ use tray_icon::{
 
 use crate::autostart;
 use crate::state::AppState;
+
+/// Detects if the system is using light mode.
+fn is_light_mode() -> bool {
+    match dark_light::detect() {
+        Ok(dark_light::Mode::Light) => true,
+        Ok(dark_light::Mode::Unspecified) => {
+            // Default to dark mode (white icon) when unspecified
+            false
+        }
+        Ok(dark_light::Mode::Dark) => false,
+        Err(_) => {
+            // On error, default to dark mode (white icon)
+            false
+        }
+    }
+}
+
+/// Creates an inverted (dark) version of the icon for light mode.
+/// Preserves alpha channel while inverting RGB values.
+fn create_dark_icon(image: &RgbaImage) -> RgbaImage {
+    let mut dark = image.clone();
+    for pixel in dark.pixels_mut() {
+        // Invert RGB, keep alpha
+        pixel[0] = 255 - pixel[0]; // R
+        pixel[1] = 255 - pixel[1]; // G
+        pixel[2] = 255 - pixel[2]; // B
+                                   // pixel[3] = alpha, keep as-is
+    }
+    dark
+}
 
 pub enum TrayCommand {
     Quit,
@@ -81,9 +112,18 @@ impl Tray {
         let icon_bytes = include_bytes!("assets/icon.png");
         let image = image::load_from_memory(icon_bytes)?;
         let rgba = image.to_rgba8();
-        let (width, height) = rgba.dimensions();
 
-        Icon::from_rgba(rgba.into_raw(), width, height).map_err(|e| e.into())
+        // Use dark (inverted) icon for light mode, original white icon for dark mode
+        let final_image = if is_light_mode() {
+            tracing::debug!("Light mode detected, using dark tray icon");
+            create_dark_icon(&rgba)
+        } else {
+            tracing::debug!("Dark mode detected, using light tray icon");
+            rgba
+        };
+
+        let (width, height) = final_image.dimensions();
+        Icon::from_rgba(final_image.into_raw(), width, height).map_err(|e| e.into())
     }
 
     pub fn update_status(&mut self, state: &Arc<RwLock<AppState>>) {

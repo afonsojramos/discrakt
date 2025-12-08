@@ -4,12 +4,43 @@
 //! that support the freedesktop StatusNotifierItem specification.
 
 use crossbeam_channel::{Receiver, Sender};
+use image::RgbaImage;
 use ksni::blocking::TrayMethods;
 use ksni::menu::*;
 use std::sync::{Arc, RwLock};
 
 use crate::autostart;
 use crate::state::AppState;
+
+/// Detects if the system is using light mode.
+fn is_light_mode() -> bool {
+    match dark_light::detect() {
+        Ok(dark_light::Mode::Light) => true,
+        Ok(dark_light::Mode::Unspecified) => {
+            // Default to dark mode (white icon) when unspecified
+            false
+        }
+        Ok(dark_light::Mode::Dark) => false,
+        Err(_) => {
+            // On error, default to dark mode (white icon)
+            false
+        }
+    }
+}
+
+/// Creates an inverted (dark) version of the icon for light mode.
+/// Preserves alpha channel while inverting RGB values.
+fn create_dark_icon(image: &RgbaImage) -> RgbaImage {
+    let mut dark = image.clone();
+    for pixel in dark.pixels_mut() {
+        // Invert RGB, keep alpha
+        pixel[0] = 255 - pixel[0]; // R
+        pixel[1] = 255 - pixel[1]; // G
+        pixel[2] = 255 - pixel[2]; // B
+                                   // pixel[3] = alpha, keep as-is
+    }
+    dark
+}
 
 /// Commands that can be triggered from the tray menu.
 pub enum TrayCommand {
@@ -50,11 +81,19 @@ impl ksni::Tray for DiscraktTray {
         let icon_bytes = include_bytes!("assets/icon.png");
         if let Ok(image) = image::load_from_memory(icon_bytes) {
             let rgba = image.to_rgba8();
-            let (width, height) = rgba.dimensions();
+
+            // Use dark (inverted) icon for light mode, original white icon for dark mode
+            let final_image = if is_light_mode() {
+                create_dark_icon(&rgba)
+            } else {
+                rgba
+            };
+
+            let (width, height) = final_image.dimensions();
 
             // Convert RGBA to ARGB (ksni expects ARGB format)
             let mut argb_data = Vec::with_capacity((width * height * 4) as usize);
-            for pixel in rgba.pixels() {
+            for pixel in final_image.pixels() {
                 argb_data.push(pixel[3]); // A
                 argb_data.push(pixel[0]); // R
                 argb_data.push(pixel[1]); // G
