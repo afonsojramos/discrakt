@@ -1,6 +1,6 @@
 [package]
 name = "discrakt"
-version = "2.2.3"
+version = "0.0.0"
 edition = "2021"
 authors = ["afonsojramos"]
 description = "Easy to Use Trakt/Plex Discord Rich Presence"
@@ -52,7 +52,7 @@ opt-level = "z"
 name = "Discrakt"
 identifier = "com.afonsojramos.discrakt"
 icon = ["assets/Discrakt.icns"]
-version = "2.2.3"
+version = "0.0.0"
 copyright = "Copyright (c) afonsojramos. All rights reserved."
 category = "public.app-category.utilities"
 short_description = "Trakt to Discord Rich Presence"

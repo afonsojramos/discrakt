@@ -41,17 +41,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Build amd64 .deb package
-        run: cargo deb --no-build
-
-      - name: Rename amd64 .deb
-        run: |
-          mv target/debian/discrakt_${{ steps.version.outputs.VERSION }}-1_amd64.deb \
-             target/debian/discrakt_${{ steps.version.outputs.VERSION }}_amd64.deb
-
-      - name: Prepare amd64 binary
-        run: |
-          cp target/release/discrakt target/release/discrakt_amd64
-          chmod +x target/release/discrakt_amd64
+        run: cargo deb --no-build --deb-version=${{ steps.version.outputs.VERSION }}
 
       - name: Install compiler tools (as we're cross-compiling)
         run: sudo apt install -y gcc-aarch64-linux-gnu
@@ -59,35 +49,14 @@ jobs:
       - name: Build arm64
         run: cargo build --release --target=aarch64-unknown-linux-gnu
 
-      - name: Prepare arm64 binary
-        run: |
-          cp target/aarch64-unknown-linux-gnu/release/discrakt target/release/discrakt_arm64
-          chmod +x target/release/discrakt_arm64
-
       - name: Build arm64 .deb package
-        run: cargo deb --no-build --target=aarch64-unknown-linux-gnu
-
-      - name: Rename arm64 .deb
-        run: |
-          mv target/aarch64-unknown-linux-gnu/debian/discrakt_${{ steps.version.outputs.VERSION }}-1_arm64.deb \
-             target/debian/discrakt_${{ steps.version.outputs.VERSION }}_arm64.deb
+        run: cargo deb --no-build --target=aarch64-unknown-linux-gnu --deb-version=${{ steps.version.outputs.VERSION }}
 
       - name: Build amd64 .rpm package
-        run: cargo generate-rpm
-
-      - name: Rename amd64 .rpm
-        run: |
-          mv target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}-1.x86_64.rpm \
-             target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.x86_64.rpm
+        run: cargo generate-rpm --set-metadata="version = \"${{ steps.version.outputs.VERSION }}\"" --set-metadata="release = \"\""
 
       - name: Build arm64 .rpm package
-        run: cargo generate-rpm --target=aarch64-unknown-linux-gnu
-
-      - name: Rename arm64 .rpm
-        run: |
-          mkdir -p target/generate-rpm
-          mv target/aarch64-unknown-linux-gnu/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}-1.aarch64.rpm \
-             target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.aarch64.rpm
+        run: cargo generate-rpm --target=aarch64-unknown-linux-gnu --set-metadata="version = \"${{ steps.version.outputs.VERSION }}\"" --set-metadata="release = \"\""
 
       - name: Build amd64 AppImage
         run: |
@@ -143,15 +112,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} target/release/discrakt_arm64
-          gh release upload ${{ github.ref_name }} target/release/discrakt_amd64
           gh release upload ${{ github.ref_name }} target/debian/discrakt_${{ steps.version.outputs.VERSION }}_amd64.deb
-          gh release upload ${{ github.ref_name }} target/debian/discrakt_${{ steps.version.outputs.VERSION }}_arm64.deb
+          gh release upload ${{ github.ref_name }} target/aarch64-unknown-linux-gnu/debian/discrakt_${{ steps.version.outputs.VERSION }}_arm64.deb
           gh release upload ${{ github.ref_name }} target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.x86_64.rpm
-          gh release upload ${{ github.ref_name }} target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.aarch64.rpm
+          gh release upload ${{ github.ref_name }} target/aarch64-unknown-linux-gnu/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.aarch64.rpm
           gh release upload ${{ github.ref_name }} target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-x86_64.AppImage
           gh release upload ${{ github.ref_name }} target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-aarch64.AppImage
-          gh release upload ${{ github.ref_name }} credentials.ini
 
   publish-win:
     runs-on: windows-latest
@@ -177,9 +143,6 @@ jobs:
       - name: Build win64
         run: cargo build --release
 
-      - name: Prepare win64 Binary
-        run: Copy-Item target/release/discrakt.exe target/release/discrakt_win64.exe
-
       - name: Build MSI installer
         run: |
           New-Item -ItemType Directory -Force -Path target/wix
@@ -198,7 +161,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} target/release/discrakt_win64.exe
           gh release upload ${{ github.ref_name }} "target/wix/Discrakt_${{ steps.version.outputs.VERSION }}_win64.msi"
 
   publish-macos:
@@ -227,6 +189,13 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Build arm64 (Apple Silicon)
         run: cargo build --release --target=aarch64-apple-darwin
@@ -262,8 +231,7 @@ jobs:
       - name: Create Info.plist
         run: |
           APP_BUNDLE="target/release/Discrakt.app"
-          VERSION="${{ github.event.release.tag_name }}"
-          VERSION="${VERSION#v}"
+          VERSION="${{ steps.version.outputs.VERSION }}"
 
           cat > "${APP_BUNDLE}/Contents/Info.plist" << EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -357,8 +325,7 @@ jobs:
 
       - name: Create DMG
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          VERSION="${VERSION#v}"
+          VERSION="${{ steps.version.outputs.VERSION }}"
 
           create-dmg \
             --volname "Discrakt ${VERSION}" \
@@ -387,9 +354,7 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          VERSION="${VERSION#v}"
-          DMG_PATH="target/release/Discrakt_${VERSION}_universal.dmg"
+          DMG_PATH="target/release/Discrakt_${{ steps.version.outputs.VERSION }}_universal.dmg"
 
           xcrun notarytool submit "$DMG_PATH" \
             --apple-id "$APPLE_ID" \
@@ -400,23 +365,10 @@ jobs:
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler validate "$DMG_PATH"
 
-      - name: Prepare standalone binaries
-        run: |
-          cp target/aarch64-apple-darwin/release/discrakt "target/release/discrakt_macos_arm64"
-          cp target/x86_64-apple-darwin/release/discrakt "target/release/discrakt_macos_x86_64"
-          cp target/release/discrakt "target/release/discrakt_macos_universal"
-          chmod +x target/release/discrakt_macos_*
-
       - name: Upload binaries
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          VERSION_CLEAN="${VERSION#v}"
-
           gh release upload "${{ github.ref_name }}" \
-            "target/release/Discrakt_${VERSION_CLEAN}_universal.dmg" \
-            "target/release/discrakt_macos_arm64" \
-            "target/release/discrakt_macos_x86_64" \
-            "target/release/discrakt_macos_universal" \
+            "target/release/Discrakt_${{ steps.version.outputs.VERSION }}_universal.dmg" \
             --clobber
