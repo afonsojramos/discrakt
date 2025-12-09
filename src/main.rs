@@ -121,11 +121,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Spawn background polling thread
     let polling_handle = thread::spawn(move || {
-        // discord-rich-presence 1.0.0: new() no longer returns Result
         let mut discord = Discord::new(DEFAULT_DISCORD_APP_ID.to_string());
         let mut trakt = Trakt::new(trakt_client_id, trakt_username, trakt_access_token);
 
-        Discord::connect(&mut discord);
+        discord.connect();
 
         // Update state: Discord connected
         if let Ok(mut state) = app_state_clone.write() {
@@ -149,7 +148,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let is_paused = app_state_clone.read().map(|s| s.is_paused).unwrap_or(false);
 
             if is_paused {
-                Discord::close(&mut discord);
+                discord.close();
                 continue;
             }
 
@@ -161,7 +160,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Ok(mut state) = app_state_clone.write() {
                         state.clear_watching();
                     }
-                    Discord::close(&mut discord);
+                    discord.close();
                     continue;
                 }
             };
@@ -193,10 +192,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 state.set_watching(title, details, watch_stats.watch_percentage);
             }
 
-            Discord::set_activity(&mut discord, &response, &mut trakt, tmdb_token.clone());
+            discord.set_activity(&response, &mut trakt, tmdb_token.clone());
         }
 
-        Discord::close(&mut discord);
+        discord.close();
         tracing::info!("Polling thread stopped");
     });
 
