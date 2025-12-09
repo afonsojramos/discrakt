@@ -1,6 +1,7 @@
 use serde::Deserialize;
+use serde_json::Value;
 use std::{collections::HashMap, time::Duration};
-use ureq::{serde_json, Agent, AgentBuilder};
+use ureq::Agent;
 
 use crate::utils::{user_agent, MediaType};
 
@@ -65,14 +66,15 @@ pub struct Trakt {
 
 impl Trakt {
     pub fn new(client_id: String, username: String, oauth_access_token: Option<String>) -> Trakt {
+        let config = Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(10)))
+            .user_agent(user_agent())
+            .build();
+
         Trakt {
             rating_cache: HashMap::default(),
             image_cache: HashMap::default(),
-            agent: AgentBuilder::new()
-                .timeout_read(Duration::from_secs(5))
-                .timeout_write(Duration::from_secs(5))
-                .user_agent(user_agent())
-                .build(),
+            agent: config.into(),
             client_id,
             username,
             oauth_access_token,
@@ -110,26 +112,24 @@ impl Trakt {
     pub fn get_watching(&self) -> Option<TraktWatchingResponse> {
         let endpoint = format!("https://api.trakt.tv/users/{}/watching", self.username);
 
-        let request = self
+        let mut request = self
             .agent
             .get(&endpoint)
-            .set("Content-Type", "application/json")
-            .set("trakt-api-version", "2")
-            .set("trakt-api-key", &self.client_id);
+            .header("Content-Type", "application/json")
+            .header("trakt-api-version", "2")
+            .header("trakt-api-key", &self.client_id);
 
         // add Authorization header if there is a (valid) OAuth access token
-        let request = if self.oauth_access_token.is_some()
+        if self.oauth_access_token.is_some()
             && !self.oauth_access_token.as_ref().unwrap().is_empty()
         {
             let authorization = format!("Bearer {}", self.oauth_access_token.as_ref().unwrap());
-            request.set("Authorization", &authorization)
-        } else {
-            request
-        };
+            request = request.header("Authorization", &authorization);
+        }
 
-        let response = match request.call() {
+        let mut response = match request.call() {
             Ok(response) => response,
-            Err(ureq::Error::Status(code, _)) => {
+            Err(ureq::Error::StatusCode(code)) => {
                 self.handle_auth_error(code, &endpoint);
                 return None;
             }
@@ -139,7 +139,7 @@ impl Trakt {
             }
         };
 
-        response.into_json().unwrap_or_default()
+        response.body_mut().read_json().unwrap_or_default()
     }
 
     pub fn get_poster(
@@ -157,9 +157,9 @@ impl Trakt {
                     MediaType::Show => format!("https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_id}/images?api_key={tmdb_token}")
                 };
 
-                let response = match self.agent.get(&endpoint).call() {
+                let mut response = match self.agent.get(&endpoint).call() {
                     Ok(response) => response,
-                    Err(ureq::Error::Status(401, _)) => {
+                    Err(ureq::Error::StatusCode(401)) => {
                         tracing::error!(
                             endpoint = %endpoint,
                             "TMDB API key expired or invalid"
@@ -176,7 +176,7 @@ impl Trakt {
                     }
                 };
 
-                match response.into_json::<serde_json::Value>() {
+                match response.body_mut().read_json::<Value>() {
                     Ok(body) => {
                         if body["posters"].as_array().unwrap_or(&vec![]).is_empty() {
                             tracing::warn!(
@@ -219,16 +219,16 @@ impl Trakt {
             None => {
                 let endpoint = format!("https://api.trakt.tv/movies/{movie_slug}/ratings");
 
-                let response = match self
+                let mut response = match self
                     .agent
                     .get(&endpoint)
-                    .set("Content-Type", "application/json")
-                    .set("trakt-api-version", "2")
-                    .set("trakt-api-key", &self.client_id)
+                    .header("Content-Type", "application/json")
+                    .header("trakt-api-version", "2")
+                    .header("trakt-api-key", &self.client_id)
                     .call()
                 {
                     Ok(response) => response,
-                    Err(ureq::Error::Status(code, _)) => {
+                    Err(ureq::Error::StatusCode(code)) => {
                         self.handle_auth_error(code, &endpoint);
                         return 0.0;
                     }
@@ -238,7 +238,7 @@ impl Trakt {
                     }
                 };
 
-                match response.into_json::<TraktRatingsResponse>() {
+                match response.body_mut().read_json::<TraktRatingsResponse>() {
                     Ok(body) => {
                         self.rating_cache
                             .insert(movie_slug.to_string(), body.rating);

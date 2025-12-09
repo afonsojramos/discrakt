@@ -1,8 +1,9 @@
 use chrono::{DateTime, FixedOffset, SecondsFormat, Utc};
 use configparser::ini::Ini;
 use serde::Deserialize;
+use serde_json::json;
 use std::{env, path::PathBuf, sync::OnceLock, thread, time::Duration};
-use ureq::AgentBuilder;
+use ureq::Agent;
 
 use crate::setup;
 
@@ -120,27 +121,25 @@ pub enum DeviceTokenPollResult {
 /// This is the first step of the device OAuth flow. Returns the device code info
 /// that should be displayed to the user.
 pub fn request_device_code(trakt_client_id: &str) -> Result<TraktDeviceCode, String> {
-    let agent = AgentBuilder::new()
-        .timeout_read(Duration::from_secs(10))
-        .timeout_write(Duration::from_secs(10))
+    let config = Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(20)))
+        .user_agent(user_agent())
         .build();
+    let agent: Agent = config.into();
 
     let response = agent
         .post("https://api.trakt.tv/oauth/device/code")
-        .set("Content-Type", "application/json")
-        .set("User-Agent", user_agent())
-        .send_json(ureq::json!({
+        .header("Content-Type", "application/json")
+        .send_json(json!({
             "client_id": trakt_client_id,
         }));
 
     match response {
-        Ok(resp) => resp
-            .into_json::<TraktDeviceCode>()
+        Ok(mut resp) => resp
+            .body_mut()
+            .read_json::<TraktDeviceCode>()
             .map_err(|e| format!("Failed to parse device code response: {}", e)),
-        Err(ureq::Error::Status(code, resp)) => {
-            let error_body = resp.into_string().unwrap_or_default();
-            Err(format!("HTTP {}: {}", code, error_body))
-        }
+        Err(ureq::Error::StatusCode(code)) => Err(format!("HTTP {}", code)),
         Err(e) => Err(format!("Network error: {}", e)),
     }
 }
@@ -150,34 +149,33 @@ pub fn request_device_code(trakt_client_id: &str) -> Result<TraktDeviceCode, Str
 /// This should be called repeatedly at the interval specified in the device code response.
 /// Returns the poll result indicating success, pending, or an error condition.
 pub fn poll_device_token(trakt_client_id: &str, device_code: &str) -> DeviceTokenPollResult {
-    let agent = AgentBuilder::new()
-        .timeout_read(Duration::from_secs(10))
-        .timeout_write(Duration::from_secs(10))
+    let config = Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(20)))
+        .user_agent(user_agent())
         .build();
+    let agent: Agent = config.into();
 
     let response = agent
         .post("https://api.trakt.tv/oauth/device/token")
-        .set("Content-Type", "application/json")
-        .set("User-Agent", user_agent())
-        .send_json(ureq::json!({
+        .header("Content-Type", "application/json")
+        .send_json(json!({
             "code": device_code,
             "client_id": trakt_client_id,
         }));
 
     match response {
-        Ok(resp) => match resp.into_json::<TraktAccessToken>() {
+        Ok(mut resp) => match resp.body_mut().read_json::<TraktAccessToken>() {
             Ok(token) => DeviceTokenPollResult::Success(token),
             Err(e) => DeviceTokenPollResult::Error(format!("Failed to parse token: {}", e)),
         },
-        Err(ureq::Error::Status(400, _)) => DeviceTokenPollResult::Pending,
-        Err(ureq::Error::Status(404, _)) => DeviceTokenPollResult::InvalidCode,
-        Err(ureq::Error::Status(409, _)) => DeviceTokenPollResult::AlreadyUsed,
-        Err(ureq::Error::Status(410, _)) => DeviceTokenPollResult::Expired,
-        Err(ureq::Error::Status(418, _)) => DeviceTokenPollResult::Denied,
-        Err(ureq::Error::Status(429, _)) => DeviceTokenPollResult::SlowDown,
-        Err(ureq::Error::Status(code, resp)) => {
-            let body = resp.into_string().unwrap_or_default();
-            DeviceTokenPollResult::Error(format!("HTTP {}: {}", code, body))
+        Err(ureq::Error::StatusCode(400)) => DeviceTokenPollResult::Pending,
+        Err(ureq::Error::StatusCode(404)) => DeviceTokenPollResult::InvalidCode,
+        Err(ureq::Error::StatusCode(409)) => DeviceTokenPollResult::AlreadyUsed,
+        Err(ureq::Error::StatusCode(410)) => DeviceTokenPollResult::Expired,
+        Err(ureq::Error::StatusCode(418)) => DeviceTokenPollResult::Denied,
+        Err(ureq::Error::StatusCode(429)) => DeviceTokenPollResult::SlowDown,
+        Err(ureq::Error::StatusCode(code)) => {
+            DeviceTokenPollResult::Error(format!("HTTP {}", code))
         }
         Err(e) => DeviceTokenPollResult::Error(format!("Network error: {}", e)),
     }
@@ -362,34 +360,28 @@ impl Env {
 
         tracing::info!("Attempting to refresh OAuth access token");
 
-        let agent = AgentBuilder::new()
-            .timeout_read(Duration::from_secs(5))
-            .timeout_write(Duration::from_secs(5))
+        let config = Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(10)))
+            .user_agent(user_agent())
             .build();
+        let agent: Agent = config.into();
 
-        let response = match agent
+        let mut response = match agent
             .post("https://api.trakt.tv/oauth/token")
-            .set("Content-Type", "application/json")
-            .set("User-Agent", user_agent())
-            .send_json(ureq::json!({
+            .header("Content-Type", "application/json")
+            .send_json(json!({
                 "refresh_token": refresh_token,
                 "client_id": self.trakt_client_id,
                 "grant_type": "refresh_token",
             })) {
             Ok(response) => response,
-            Err(ureq::Error::Status(400, response)) => {
+            Err(ureq::Error::StatusCode(400)) => {
                 tracing::warn!("Refresh token is invalid or expired, need to reauthorize");
-                if let Ok(error_body) = response.into_string() {
-                    tracing::debug!("Refresh error details: {}", error_body);
-                }
                 self.authorize_app();
                 return;
             }
-            Err(ureq::Error::Status(code, response)) => {
+            Err(ureq::Error::StatusCode(code)) => {
                 tracing::error!("Failed to refresh token: HTTP {}", code);
-                if let Ok(error_body) = response.into_string() {
-                    tracing::error!("Error details: {}", error_body);
-                }
                 // On other errors, try reauthorization
                 self.authorize_app();
                 return;
@@ -400,7 +392,7 @@ impl Env {
             }
         };
 
-        let json_response: Option<TraktAccessToken> = match response.into_json() {
+        let json_response: Option<TraktAccessToken> = match response.body_mut().read_json() {
             Ok(token) => Some(token),
             Err(e) => {
                 tracing::error!("Failed to parse token refresh response: {}", e);
