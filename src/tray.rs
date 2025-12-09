@@ -12,6 +12,7 @@ use tray_icon::{
 
 use crate::autostart;
 use crate::state::AppState;
+use crate::utils::{create_dark_icon, is_light_mode};
 
 pub enum TrayCommand {
     Quit,
@@ -81,9 +82,18 @@ impl Tray {
         let icon_bytes = include_bytes!("assets/icon.png");
         let image = image::load_from_memory(icon_bytes)?;
         let rgba = image.to_rgba8();
-        let (width, height) = rgba.dimensions();
 
-        Icon::from_rgba(rgba.into_raw(), width, height).map_err(|e| e.into())
+        // Use dark (inverted) icon for light mode, original white icon for dark mode
+        let final_image = if is_light_mode() {
+            tracing::debug!("Light mode detected, using dark tray icon");
+            create_dark_icon(&rgba)
+        } else {
+            tracing::debug!("Dark mode detected, using light tray icon");
+            rgba
+        };
+
+        let (width, height) = final_image.dimensions();
+        Icon::from_rgba(final_image.into_raw(), width, height).map_err(|e| e.into())
     }
 
     pub fn update_status(&mut self, state: &Arc<RwLock<AppState>>) {

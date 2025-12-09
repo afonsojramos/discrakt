@@ -10,6 +10,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::autostart;
 use crate::state::AppState;
+use crate::utils::{create_dark_icon, is_light_mode};
 
 /// Commands that can be triggered from the tray menu.
 pub enum TrayCommand {
@@ -50,11 +51,19 @@ impl ksni::Tray for DiscraktTray {
         let icon_bytes = include_bytes!("assets/icon.png");
         if let Ok(image) = image::load_from_memory(icon_bytes) {
             let rgba = image.to_rgba8();
-            let (width, height) = rgba.dimensions();
+
+            // Use dark (inverted) icon for light mode, original white icon for dark mode
+            let final_image = if is_light_mode() {
+                create_dark_icon(&rgba)
+            } else {
+                rgba
+            };
+
+            let (width, height) = final_image.dimensions();
 
             // Convert RGBA to ARGB (ksni expects ARGB format)
             let mut argb_data = Vec::with_capacity((width * height * 4) as usize);
-            for pixel in rgba.pixels() {
+            for pixel in final_image.pixels() {
                 argb_data.push(pixel[3]); // A
                 argb_data.push(pixel[0]); // R
                 argb_data.push(pixel[1]); // G
