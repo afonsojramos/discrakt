@@ -4,43 +4,13 @@
 //! that support the freedesktop StatusNotifierItem specification.
 
 use crossbeam_channel::{Receiver, Sender};
-use image::RgbaImage;
 use ksni::blocking::TrayMethods;
 use ksni::menu::*;
 use std::sync::{Arc, RwLock};
 
 use crate::autostart;
 use crate::state::AppState;
-
-/// Detects if the system is using light mode.
-fn is_light_mode() -> bool {
-    match dark_light::detect() {
-        Ok(dark_light::Mode::Light) => true,
-        Ok(dark_light::Mode::Unspecified) => {
-            // Default to dark mode (white icon) when unspecified
-            false
-        }
-        Ok(dark_light::Mode::Dark) => false,
-        Err(_) => {
-            // On error, default to dark mode (white icon)
-            false
-        }
-    }
-}
-
-/// Creates an inverted (dark) version of the icon for light mode.
-/// Preserves alpha channel while inverting RGB values.
-fn create_dark_icon(image: &RgbaImage) -> RgbaImage {
-    let mut dark = image.clone();
-    for pixel in dark.pixels_mut() {
-        // Invert RGB, keep alpha
-        pixel[0] = 255 - pixel[0]; // R
-        pixel[1] = 255 - pixel[1]; // G
-        pixel[2] = 255 - pixel[2]; // B
-                                   // pixel[3] = alpha, keep as-is
-    }
-    dark
-}
+use crate::utils::{create_dark_icon, is_light_mode};
 
 /// Commands that can be triggered from the tray menu.
 pub enum TrayCommand {
