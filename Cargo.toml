@@ -37,7 +37,7 @@ tray-icon = "0.19"
 ksni = { version = "0.3", features = ["blocking"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-app-kit = "0.2"
+objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
