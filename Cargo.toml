@@ -11,7 +11,7 @@ readme = "README.md"
 exclude = [".github/*", "docs/*.psd", "credentials.ini", ".gitignore"]
 
 [dependencies]
-discord-rich-presence = "0.2.5"
+discord-rich-presence = "1.0.0"
 ureq = { version = "2.12.1", features = ["json"] }
 configparser = { version = "3.1.0", features = ["indexmap"] }
 serde = { version = "1.0.228", features = ["derive"] }
@@ -37,7 +37,7 @@ tray-icon = "0.19"
 ksni = { version = "0.3", features = ["blocking"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-app-kit = "0.2"
+objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
