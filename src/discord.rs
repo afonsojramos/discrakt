@@ -28,15 +28,15 @@ pub struct Payload {
 }
 
 impl Discord {
-    pub fn new(discord_client_id: String) -> Result<Discord, Box<dyn std::error::Error>> {
-        let client = DiscordIpcClient::new(&discord_client_id).map_err(|e| {
-            tracing::error!("Couldn't create Discord client: {e}");
-            e
-        })?;
-        Ok(Discord {
-            client,
+    /// Creates a new Discord client with the given application ID.
+    ///
+    /// Note: discord-rich-presence 1.0.0 changed the API - `DiscordIpcClient::new()`
+    /// now returns the client directly (not a Result).
+    pub fn new(discord_client_id: String) -> Discord {
+        Discord {
+            client: DiscordIpcClient::new(&discord_client_id),
             current_app_id: discord_client_id,
-        })
+        }
     }
 
     /// Switch to a different Discord application ID if needed.
@@ -56,18 +56,11 @@ impl Discord {
         let _ = self.client.close();
 
         // Create new client with new app ID
-        match DiscordIpcClient::new(new_app_id) {
-            Ok(new_client) => {
-                self.client = new_client;
-                self.current_app_id = new_app_id.to_string();
-                self.connect();
-                true
-            }
-            Err(e) => {
-                tracing::error!("Failed to create Discord client with new app ID: {e}");
-                false
-            }
-        }
+        // Note: discord-rich-presence 1.0.0 - new() no longer returns Result
+        self.client = DiscordIpcClient::new(new_app_id);
+        self.current_app_id = new_app_id.to_string();
+        self.connect();
+        true
     }
 
     pub fn connect(&mut self) {
