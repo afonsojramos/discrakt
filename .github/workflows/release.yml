@@ -25,7 +25,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt update
-          sudo apt install -y libgtk-3-dev libappindicator3-dev libxdo-dev
+          sudo apt install -y libgtk-3-dev libappindicator3-dev libxdo-dev desktop-file-utils
 
       - name: Install packaging tools
         run: cargo install cargo-deb cargo-generate-rpm
