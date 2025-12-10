@@ -122,6 +122,29 @@ chmod +x Discrakt-*-x86_64.AppImage
 
 Discrakt includes a "Start at Login" option in its system tray menu. Enable it to automatically start when you log in.
 
+You can also enable autostart from the command line:
+
+```bash
+discrakt --autostart 1
+```
+
+This is useful for scripting or package manager post-install hooks. To disable:
+
+```bash
+discrakt --autostart 0
+```
+
+### Command Line Options
+
+```
+discrakt [OPTIONS]
+
+Options:
+    --autostart <VALUE>  Enable (1) or disable (0) automatic startup at login
+    --version, -V        Show version information
+    --help, -h           Show help message
+```
+
 ## Development
 
 Make sure you've installed Rust. You can install Rust and its package manager, `cargo` by following the instructions on [rustup.rs](https://rustup.rs/).
