@@ -5,6 +5,7 @@
 )]
 
 use discrakt::{
+    autostart,
     discord::Discord,
     state::AppState,
     trakt::Trakt,
@@ -12,6 +13,7 @@ use discrakt::{
     utils::{get_watch_stats, load_config, DEFAULT_DISCORD_APP_ID},
 };
 use std::{
+    env, process,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, RwLock,
@@ -59,6 +61,99 @@ fn init_logging() {
         .init();
 }
 
+fn print_help() {
+    println!(
+        "Discrakt - Trakt to Discord Rich Presence
+
+Usage: discrakt [OPTIONS]
+
+Options:
+    --autostart <VALUE>  Control automatic startup at login
+                         VALUES: 1, true, on  = enable
+                                 0, false, off = disable
+    --version, -V        Show version information
+    --help, -h           Show this help message
+
+When run without options, Discrakt starts normally and runs in
+the system tray, updating your Discord status based on Trakt.
+
+Examples:
+    discrakt                  Start Discrakt normally
+    discrakt --autostart 1    Enable start at login and exit
+    discrakt --autostart=off  Disable start at login and exit"
+    );
+}
+
+fn handle_autostart_arg(value: &str) -> ! {
+    match value {
+        "1" | "true" | "on" => match autostart::enable() {
+            Ok(()) => {
+                println!("Autostart enabled. Discrakt will start automatically at login.");
+                process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("Failed to enable autostart: {}", e);
+                process::exit(1);
+            }
+        },
+        "0" | "false" | "off" => match autostart::disable() {
+            Ok(()) => {
+                println!("Autostart disabled.");
+                process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("Failed to disable autostart: {}", e);
+                process::exit(1);
+            }
+        },
+        _ => {
+            eprintln!("Invalid value for --autostart: '{}'", value);
+            eprintln!("Valid values: 1, true, on (enable) or 0, false, off (disable)");
+            process::exit(1);
+        }
+    }
+}
+
+fn parse_args() {
+    let args: Vec<String> = env::args().collect();
+
+    // Process first argument only - all current options exit immediately
+    if let Some(arg) = args.get(1) {
+        match arg.as_str() {
+            "--help" | "-h" => {
+                print_help();
+                process::exit(0);
+            }
+            "--version" | "-V" => {
+                println!("discrakt {}", env!("CARGO_PKG_VERSION"));
+                process::exit(0);
+            }
+            "--autostart" => {
+                let value = args.get(2).map(String::as_str).unwrap_or_else(|| {
+                    eprintln!("Error: --autostart requires a value");
+                    eprintln!("Use --help for usage information.");
+                    process::exit(1);
+                });
+                handle_autostart_arg(value);
+            }
+            arg if arg.starts_with("--autostart=") => {
+                let value = arg.strip_prefix("--autostart=").unwrap();
+                if value.is_empty() {
+                    eprintln!("Error: --autostart requires a value");
+                    eprintln!("Use --help for usage information.");
+                    process::exit(1);
+                }
+                handle_autostart_arg(value);
+            }
+            arg => {
+                eprintln!("Unknown option: {}", arg);
+                eprintln!("Use --help for usage information.");
+                process::exit(1);
+            }
+        }
+    }
+}
+
 struct App {
     tray: Option<Tray>,
     app_state: Arc<RwLock<AppState>>,
@@ -97,6 +192,9 @@ impl ApplicationHandler for App {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Handle CLI arguments first (before logging, as --help/--autostart exit immediately)
+    parse_args();
+
     init_logging();
 
     // Platform-specific initialization
