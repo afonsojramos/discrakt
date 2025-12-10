@@ -332,6 +332,10 @@ fn test_poll_device_token_other_http_error() {
 // Theme Detection Tests
 // ============================================================================
 
+// Note: is_light_mode() uses the dark-light crate which on Linux requires
+// D-Bus via zbus, which needs a Tokio runtime. Only test on macOS where
+// it works without async runtime.
+#[cfg(target_os = "macos")]
 #[test]
 fn test_is_light_mode_returns_bool() {
     // Just verify it doesn't panic and returns a bool
