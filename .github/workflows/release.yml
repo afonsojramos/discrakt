@@ -53,10 +53,14 @@ jobs:
         run: cargo deb --no-build --target=aarch64-unknown-linux-gnu --deb-version=${{ steps.version.outputs.VERSION }}
 
       - name: Build amd64 .rpm package
-        run: cargo generate-rpm --set-metadata="version = \"${{ steps.version.outputs.VERSION }}\"" --set-metadata="release = \"\""
+        run: |
+          cargo generate-rpm --set-metadata="version = \"${{ steps.version.outputs.VERSION }}\"" --set-metadata="release = \"1\""
+          ls -la target/generate-rpm/ || echo "WARNING: target/generate-rpm directory not found"
 
       - name: Build arm64 .rpm package
-        run: cargo generate-rpm --target=aarch64-unknown-linux-gnu --set-metadata="version = \"${{ steps.version.outputs.VERSION }}\"" --set-metadata="release = \"\""
+        run: |
+          cargo generate-rpm --target=aarch64-unknown-linux-gnu --set-metadata="version = \"${{ steps.version.outputs.VERSION }}\"" --set-metadata="release = \"1\""
+          ls -la target/aarch64-unknown-linux-gnu/generate-rpm/ || echo "WARNING: target/aarch64-unknown-linux-gnu/generate-rpm directory not found"
 
       - name: Build amd64 AppImage
         run: |
@@ -114,8 +118,8 @@ jobs:
         run: |
           gh release upload ${{ github.ref_name }} target/debian/discrakt_${{ steps.version.outputs.VERSION }}_amd64.deb
           gh release upload ${{ github.ref_name }} target/aarch64-unknown-linux-gnu/debian/discrakt_${{ steps.version.outputs.VERSION }}_arm64.deb
-          gh release upload ${{ github.ref_name }} target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.x86_64.rpm
-          gh release upload ${{ github.ref_name }} target/aarch64-unknown-linux-gnu/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}.aarch64.rpm
+          gh release upload ${{ github.ref_name }} target/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}-1.x86_64.rpm
+          gh release upload ${{ github.ref_name }} target/aarch64-unknown-linux-gnu/generate-rpm/discrakt-${{ steps.version.outputs.VERSION }}-1.aarch64.rpm
           gh release upload ${{ github.ref_name }} target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-x86_64.AppImage
           gh release upload ${{ github.ref_name }} target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-aarch64.AppImage
 
