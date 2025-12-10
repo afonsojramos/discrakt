@@ -161,7 +161,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Upload MSI installer
           gh release upload ${{ github.ref_name }} "target/wix/Discrakt_${{ steps.version.outputs.VERSION }}_win64.msi"
+          # Upload standalone exe for Scoop
+          Copy-Item "target/release/discrakt.exe" "target/release/discrakt_win64.exe"
+          gh release upload ${{ github.ref_name }} "target/release/discrakt_win64.exe"
 
   publish-macos:
     runs-on: macos-14
@@ -365,10 +369,66 @@ jobs:
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler validate "$DMG_PATH"
 
+      - name: Create Homebrew tarballs
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+
+          # Create arm64 tarball
+          mkdir -p target/homebrew/arm64
+          cp target/aarch64-apple-darwin/release/discrakt target/homebrew/arm64/
+          tar -czf "target/homebrew/discrakt-${VERSION}-aarch64-apple-darwin.tar.gz" -C target/homebrew/arm64 discrakt
+
+          # Create x86_64 tarball
+          mkdir -p target/homebrew/x86_64
+          cp target/x86_64-apple-darwin/release/discrakt target/homebrew/x86_64/
+          tar -czf "target/homebrew/discrakt-${VERSION}-x86_64-apple-darwin.tar.gz" -C target/homebrew/x86_64 discrakt
+
+          # Generate SHA256 checksums for Homebrew formula
+          echo "SHA256 checksums for Homebrew formula:"
+          shasum -a 256 target/homebrew/discrakt-${VERSION}-aarch64-apple-darwin.tar.gz
+          shasum -a 256 target/homebrew/discrakt-${VERSION}-x86_64-apple-darwin.tar.gz
+
       - name: Upload binaries
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ github.ref_name }}" \
             "target/release/Discrakt_${{ steps.version.outputs.VERSION }}_universal.dmg" \
+            "target/homebrew/discrakt-${{ steps.version.outputs.VERSION }}-aarch64-apple-darwin.tar.gz" \
+            "target/homebrew/discrakt-${{ steps.version.outputs.VERSION }}-x86_64-apple-darwin.tar.gz" \
             --clobber
+
+  update-homebrew:
+    needs: publish-macos
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Trigger Homebrew formula update
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          if [ -n "$HOMEBREW_TAP_TOKEN" ]; then
+            PAYLOAD=$(jq -n --arg version "$VERSION" '{"event_type":"update-formula","client_payload":{"version":$version}}')
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+              -H "Accept: application/vnd.github.v3+json" \
+              -H "Authorization: token $HOMEBREW_TAP_TOKEN" \
+              https://api.github.com/repos/afonsojramos/homebrew-discrakt/dispatches \
+              -d "$PAYLOAD")
+            if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+              echo "Triggered Homebrew formula update (HTTP $HTTP_STATUS)"
+            else
+              echo "Failed to trigger Homebrew formula update (HTTP $HTTP_STATUS)"
+              exit 1
+            fi
+          else
+            echo "HOMEBREW_TAP_TOKEN not set - skipping Homebrew update"
+            echo "To enable automatic updates, create a PAT and add it as HOMEBREW_TAP_TOKEN secret"
+          fi

@@ -63,32 +63,64 @@ If you prefer to configure manually or use your own Trakt API application:
 
 </details>
 
-## Running executables
+## Installation
 
-Running the executables is as easy as clicking the provided executables in the latest [release](https://github.com/afonsojramos/discrakt/releases). That's it!
+### macOS
 
-Optionally, after you ensure that everything is running correctly, you can also set the executable to run on startup, so that you don't have to run it manually every time you want to start sharing your watch status.
-
-### Linux/MacOS
-
-Create a script that runs the executable silently and set it to run on startup in [Unix](https://raspberrypi.stackexchange.com/questions/15475/run-bash-script-on-startup)/[MacOS](https://www.karltarvas.com/2020/09/11/macos-run-script-on-startup.html).
+#### Homebrew (recommended)
 
 ```bash
-#!/bin/sh
-nohup ./discrakt > /dev/null &
+brew tap afonsojramos/discrakt
+brew install discrakt
 ```
+
+Supports both Apple Silicon and Intel Macs.
+
+#### DMG
+
+Download the universal DMG from the latest [release](https://github.com/afonsojramos/discrakt/releases) and drag the app to your Applications folder.
 
 ### Windows
 
-You can now use the silent Windows executable, and now you only need to follow [this guide](https://support.microsoft.com/en-us/windows/add-an-app-to-run-automatically-at-startup-in-windows-10-150da165-dcd9-7230-517b-cf3c295d89dd) to run it on startup.
-  
-#### Scoop
+#### Scoop (recommended)
 
-You can install Discrakt in [Scoop](https://scoop.sh/) via the [Extras](https://github.com/ScoopInstaller/Extras) bucket:
 ```powershell
-scoop bucket add extras # Ensure bucket is added first
+scoop bucket add extras
 scoop install discrakt
 ```
+
+#### MSI Installer
+
+Download the MSI installer from the latest [release](https://github.com/afonsojramos/discrakt/releases).
+
+### Linux
+
+#### Debian/Ubuntu (.deb)
+
+```bash
+# Download the .deb for your architecture (amd64 or arm64)
+sudo dpkg -i discrakt_*_amd64.deb
+```
+
+#### Fedora/RHEL (.rpm)
+
+```bash
+# Download the .rpm for your architecture (x86_64 or aarch64)
+sudo rpm -i discrakt-*.x86_64.rpm
+```
+
+#### AppImage
+
+Download the AppImage for your architecture from the latest [release](https://github.com/afonsojramos/discrakt/releases), make it executable, and run:
+
+```bash
+chmod +x Discrakt-*-x86_64.AppImage
+./Discrakt-*-x86_64.AppImage
+```
+
+### Running at Startup
+
+Discrakt includes a "Start at Login" option in its system tray menu. Enable it to automatically start when you log in.
 
 ## Development
 
