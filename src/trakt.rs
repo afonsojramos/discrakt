@@ -5,21 +5,39 @@ use ureq::Agent;
 
 use crate::utils::{user_agent, MediaType};
 
-#[derive(Deserialize)]
+/// Default Trakt API base URL.
+pub const DEFAULT_TRAKT_BASE_URL: &str = "https://api.trakt.tv";
+
+/// Default TMDB API base URL.
+pub const DEFAULT_TMDB_BASE_URL: &str = "https://api.themoviedb.org";
+
+/// Configuration for creating a Trakt client.
+#[derive(Clone, Default)]
+pub struct TraktConfig {
+    pub client_id: String,
+    pub username: String,
+    pub oauth_access_token: Option<String>,
+    /// Base URL for Trakt API (defaults to https://api.trakt.tv)
+    pub trakt_base_url: Option<String>,
+    /// Base URL for TMDB API (defaults to https://api.themoviedb.org)
+    pub tmdb_base_url: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct TraktMovie {
     pub title: String,
     pub year: u16,
     pub ids: TraktIds,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct TraktShow {
     pub title: String,
     pub year: u16,
     pub ids: TraktIds,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct TraktEpisode {
     pub season: u8,
     pub number: u8,
@@ -27,7 +45,7 @@ pub struct TraktEpisode {
     pub ids: TraktIds,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct TraktIds {
     pub trakt: u32,
     pub slug: Option<String>,
@@ -37,7 +55,7 @@ pub struct TraktIds {
     pub tvrage: Option<u32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct TraktWatchingResponse {
     pub expires_at: String,
     pub started_at: String,
@@ -48,7 +66,7 @@ pub struct TraktWatchingResponse {
     pub episode: Option<TraktEpisode>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct TraktRatingsResponse {
     pub rating: f64,
     pub votes: u32,
@@ -62,11 +80,26 @@ pub struct Trakt {
     client_id: String,
     username: String,
     oauth_access_token: Option<String>,
+    trakt_base_url: String,
+    tmdb_base_url: String,
 }
 
 impl Trakt {
+    /// Create a new Trakt client with default API URLs.
     pub fn new(client_id: String, username: String, oauth_access_token: Option<String>) -> Trakt {
-        let config = Agent::config_builder()
+        Self::with_config(TraktConfig {
+            client_id,
+            username,
+            oauth_access_token,
+            ..Default::default()
+        })
+    }
+
+    /// Create a new Trakt client with custom configuration.
+    ///
+    /// This constructor allows overriding the API base URLs, which is useful for testing.
+    pub fn with_config(config: TraktConfig) -> Trakt {
+        let agent_config = Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(10)))
             .user_agent(user_agent())
             .build();
@@ -74,10 +107,16 @@ impl Trakt {
         Trakt {
             rating_cache: HashMap::default(),
             image_cache: HashMap::default(),
-            agent: config.into(),
-            client_id,
-            username,
-            oauth_access_token,
+            agent: agent_config.into(),
+            client_id: config.client_id,
+            username: config.username,
+            oauth_access_token: config.oauth_access_token,
+            trakt_base_url: config
+                .trakt_base_url
+                .unwrap_or_else(|| DEFAULT_TRAKT_BASE_URL.to_string()),
+            tmdb_base_url: config
+                .tmdb_base_url
+                .unwrap_or_else(|| DEFAULT_TMDB_BASE_URL.to_string()),
         }
     }
 
@@ -110,7 +149,7 @@ impl Trakt {
     }
 
     pub fn get_watching(&self) -> Option<TraktWatchingResponse> {
-        let endpoint = format!("https://api.trakt.tv/users/{}/watching", self.username);
+        let endpoint = format!("{}/users/{}/watching", self.trakt_base_url, self.username);
 
         let mut request = self
             .agent
@@ -153,8 +192,14 @@ impl Trakt {
             Some(image_url) => Some(image_url.to_string()),
             None => {
                 let endpoint = match media_type {
-                    MediaType::Movie => format!("https://api.themoviedb.org/3/movie/{tmdb_id}/images?api_key={tmdb_token}"),
-                    MediaType::Show => format!("https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_id}/images?api_key={tmdb_token}")
+                    MediaType::Movie => format!(
+                        "{}/3/movie/{tmdb_id}/images?api_key={tmdb_token}",
+                        self.tmdb_base_url
+                    ),
+                    MediaType::Show => format!(
+                        "{}/3/tv/{tmdb_id}/season/{season_id}/images?api_key={tmdb_token}",
+                        self.tmdb_base_url
+                    ),
                 };
 
                 let mut response = match self.agent.get(&endpoint).call() {
@@ -217,7 +262,7 @@ impl Trakt {
         match self.rating_cache.get(&movie_slug) {
             Some(rating) => *rating,
             None => {
-                let endpoint = format!("https://api.trakt.tv/movies/{movie_slug}/ratings");
+                let endpoint = format!("{}/movies/{movie_slug}/ratings", self.trakt_base_url);
 
                 let mut response = match self
                     .agent

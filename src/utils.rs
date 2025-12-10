@@ -6,6 +6,7 @@ use std::{env, path::PathBuf, sync::OnceLock, thread, time::Duration};
 use ureq::Agent;
 
 use crate::setup;
+use crate::trakt::DEFAULT_TRAKT_BASE_URL;
 
 /// Refresh token time-to-live in seconds (3 months).
 /// Trakt refresh tokens are valid for 3 months from creation.
@@ -120,7 +121,15 @@ pub enum DeviceTokenPollResult {
 ///
 /// This is the first step of the device OAuth flow. Returns the device code info
 /// that should be displayed to the user.
-pub fn request_device_code(trakt_client_id: &str) -> Result<TraktDeviceCode, String> {
+///
+/// # Arguments
+/// * `trakt_client_id` - The Trakt client ID
+/// * `base_url` - Optional base URL override (defaults to https://api.trakt.tv)
+pub fn request_device_code(
+    trakt_client_id: &str,
+    base_url: Option<&str>,
+) -> Result<TraktDeviceCode, String> {
+    let base = base_url.unwrap_or(DEFAULT_TRAKT_BASE_URL);
     let config = Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(20)))
         .user_agent(user_agent())
@@ -128,7 +137,7 @@ pub fn request_device_code(trakt_client_id: &str) -> Result<TraktDeviceCode, Str
     let agent: Agent = config.into();
 
     let response = agent
-        .post("https://api.trakt.tv/oauth/device/code")
+        .post(&format!("{}/oauth/device/code", base))
         .header("Content-Type", "application/json")
         .send_json(json!({
             "client_id": trakt_client_id,
@@ -148,7 +157,17 @@ pub fn request_device_code(trakt_client_id: &str) -> Result<TraktDeviceCode, Str
 ///
 /// This should be called repeatedly at the interval specified in the device code response.
 /// Returns the poll result indicating success, pending, or an error condition.
-pub fn poll_device_token(trakt_client_id: &str, device_code: &str) -> DeviceTokenPollResult {
+///
+/// # Arguments
+/// * `trakt_client_id` - The Trakt client ID
+/// * `device_code` - The device code from the initial request
+/// * `base_url` - Optional base URL override (defaults to https://api.trakt.tv)
+pub fn poll_device_token(
+    trakt_client_id: &str,
+    device_code: &str,
+    base_url: Option<&str>,
+) -> DeviceTokenPollResult {
+    let base = base_url.unwrap_or(DEFAULT_TRAKT_BASE_URL);
     let config = Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(20)))
         .user_agent(user_agent())
@@ -156,7 +175,7 @@ pub fn poll_device_token(trakt_client_id: &str, device_code: &str) -> DeviceToke
     let agent: Agent = config.into();
 
     let response = agent
-        .post("https://api.trakt.tv/oauth/device/token")
+        .post(&format!("{}/oauth/device/token", base))
         .header("Content-Type", "application/json")
         .send_json(json!({
             "code": device_code,
@@ -228,7 +247,7 @@ impl Env {
         tracing::info!("Starting Trakt Device OAuth flow");
 
         // Step 1: Request device code
-        let device_code = match request_device_code(&self.trakt_client_id) {
+        let device_code = match request_device_code(&self.trakt_client_id, None) {
             Ok(code) => code,
             Err(e) => {
                 tracing::error!("Failed to request device code: {}", e);
@@ -279,7 +298,7 @@ impl Env {
             // Wait for the specified interval before polling
             thread::sleep(poll_interval);
 
-            match poll_device_token(&self.trakt_client_id, &device_code.device_code) {
+            match poll_device_token(&self.trakt_client_id, &device_code.device_code, None) {
                 DeviceTokenPollResult::Success(token) => {
                     tracing::info!("Successfully obtained OAuth tokens via device flow");
                     self.trakt_access_token = Some(token.access_token.clone());
