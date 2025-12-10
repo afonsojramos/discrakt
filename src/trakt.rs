@@ -120,11 +120,11 @@ impl Trakt {
             .header("trakt-api-key", &self.client_id);
 
         // add Authorization header if there is a (valid) OAuth access token
-        if self.oauth_access_token.is_some()
-            && !self.oauth_access_token.as_ref().unwrap().is_empty()
-        {
-            let authorization = format!("Bearer {}", self.oauth_access_token.as_ref().unwrap());
-            request = request.header("Authorization", &authorization);
+        if let Some(token) = &self.oauth_access_token {
+            if !token.is_empty() {
+                let authorization = format!("Bearer {}", token);
+                request = request.header("Authorization", &authorization);
+            }
         }
 
         let mut response = match request.call() {
