@@ -16,7 +16,8 @@ pub struct Discord {
     current_app_id: String,
 }
 
-#[derive(Default)]
+/// Payload data for Discord Rich Presence.
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct Payload {
     pub details: String,
     pub state: String,
@@ -25,6 +26,64 @@ pub struct Payload {
     pub link_trakt: String,
     pub img_url: String,
     pub watch_percentage: String,
+}
+
+/// Build payload data from a Trakt watching response.
+///
+/// This function extracts the display information from a Trakt response
+/// and formats it for Discord Rich Presence.
+///
+/// # Arguments
+/// * `trakt_response` - The Trakt API response for what's currently being watched
+/// * `movie_rating` - The movie rating (only used for movie type)
+///
+/// # Returns
+/// * `Some(Payload)` - The payload data if the media type is recognized
+/// * `None` - If the media type is unknown
+pub fn build_payload(trakt_response: &TraktWatchingResponse, movie_rating: f64) -> Option<Payload> {
+    let mut payload = Payload::default();
+
+    match trakt_response.r#type.as_str() {
+        "movie" => {
+            let movie = trakt_response.movie.as_ref()?;
+            payload.details = format!("{} ({})", movie.title, movie.year);
+            payload.state = format!("{:.1} stars", movie_rating);
+            payload.media = String::from("movies");
+            payload.link_imdb = format!("https://www.imdb.com/title/{}", movie.ids.imdb.as_ref()?);
+            payload.link_trakt = format!(
+                "https://trakt.tv/{}/{}",
+                payload.media,
+                movie.ids.slug.as_ref()?
+            );
+            Some(payload)
+        }
+        "episode" => {
+            let episode = trakt_response.episode.as_ref()?;
+            let show = trakt_response.show.as_ref()?;
+            payload.details = show.title.to_string();
+            payload.state = format!(
+                "S{:02}E{:02} - {}",
+                episode.season, episode.number, episode.title
+            );
+            payload.media = String::from("shows");
+            payload.link_imdb = format!("https://www.imdb.com/title/{}", show.ids.imdb.as_ref()?);
+            payload.link_trakt = format!(
+                "https://trakt.tv/{}/{}",
+                payload.media,
+                show.ids.slug.as_ref()?
+            );
+            Some(payload)
+        }
+        _ => None,
+    }
+}
+
+/// Get the appropriate Discord app ID for a media type.
+pub fn get_app_id_for_media_type(media_type: &str) -> &'static str {
+    match media_type {
+        "episode" => DEFAULT_DISCORD_APP_ID_SHOW,
+        _ => DEFAULT_DISCORD_APP_ID_MOVIE,
+    }
 }
 
 impl Discord {

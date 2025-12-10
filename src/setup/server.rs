@@ -390,7 +390,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 }
 
                 // Start OAuth device flow
-                match request_device_code(&client_id) {
+                match request_device_code(&client_id, None) {
                     Ok(device_code) => {
                         tracing::info!(
                             user_code = %device_code.user_code,
@@ -570,7 +570,7 @@ fn poll_oauth_in_background(
         // Wait for the specified interval before polling
         thread::sleep(poll_interval);
 
-        match poll_device_token(&client_id, &device_code.device_code) {
+        match poll_device_token(&client_id, &device_code.device_code, None) {
             DeviceTokenPollResult::Success(token) => {
                 tracing::info!("Successfully obtained OAuth tokens via device flow");
 
