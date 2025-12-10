@@ -105,7 +105,7 @@ jobs:
           sed -i 's/^          //' target/appimage/Discrakt.AppDir/AppRun
           chmod +x target/appimage/Discrakt.AppDir/AppRun
 
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/13/runtime-aarch64 -O runtime-aarch64
+          wget -q https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-aarch64 -O runtime-aarch64
           ARCH=aarch64 ./appimagetool --runtime-file runtime-aarch64 target/appimage/Discrakt.AppDir target/appimage/Discrakt-${{ steps.version.outputs.VERSION }}-aarch64.AppImage
 
       - name: Upload binaries
