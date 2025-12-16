@@ -84,14 +84,15 @@ fn test_set_paused() {
 
 #[test]
 fn test_status_text_paused() {
-    let mut state = AppState::default();
-    state.is_paused = true;
-    state.discord_connected = true;
-    state.current_watching = Some(WatchingInfo {
-        title: "Movie".to_string(),
-        details: "Details".to_string(),
-        progress: "50%".to_string(),
-    });
+    let state = AppState {
+        is_paused: true,
+        discord_connected: true,
+        current_watching: Some(WatchingInfo {
+            title: "Movie".to_string(),
+            details: "Details".to_string(),
+            progress: "50%".to_string(),
+        }),
+    };
 
     // Paused takes priority over everything
     assert_eq!(state.status_text(), "Paused");
@@ -99,14 +100,15 @@ fn test_status_text_paused() {
 
 #[test]
 fn test_status_text_disconnected() {
-    let mut state = AppState::default();
-    state.is_paused = false;
-    state.discord_connected = false;
-    state.current_watching = Some(WatchingInfo {
-        title: "Movie".to_string(),
-        details: "Details".to_string(),
-        progress: "50%".to_string(),
-    });
+    let state = AppState {
+        is_paused: false,
+        discord_connected: false,
+        current_watching: Some(WatchingInfo {
+            title: "Movie".to_string(),
+            details: "Details".to_string(),
+            progress: "50%".to_string(),
+        }),
+    };
 
     // Disconnected takes priority over watching
     assert_eq!(state.status_text(), "Connecting to Discord...");
@@ -114,23 +116,26 @@ fn test_status_text_disconnected() {
 
 #[test]
 fn test_status_text_nothing_playing() {
-    let mut state = AppState::default();
-    state.is_paused = false;
-    state.discord_connected = true;
-    state.current_watching = None;
+    let state = AppState {
+        is_paused: false,
+        discord_connected: true,
+        current_watching: None,
+    };
 
     assert_eq!(state.status_text(), "Nothing playing");
 }
 
 #[test]
 fn test_status_text_watching() {
-    let mut state = AppState::default();
-    state.discord_connected = true;
-    state.set_watching(
-        "Inception (2010)".to_string(),
-        "Movie".to_string(),
-        "45.50%".to_string(),
-    );
+    let state = AppState {
+        discord_connected: true,
+        current_watching: Some(WatchingInfo {
+            title: "Inception (2010)".to_string(),
+            details: "Movie".to_string(),
+            progress: "45.50%".to_string(),
+        }),
+        ..Default::default()
+    };
 
     assert_eq!(state.status_text(), "Inception (2010) - Movie");
 }
