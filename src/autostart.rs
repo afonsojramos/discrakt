@@ -169,8 +169,9 @@ mod windows {
         let exe = exe_path().ok_or("Could not determine executable path")?;
 
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let run_key = hkcu
-            .open_subkey_with_flags(RUN_KEY, KEY_WRITE)
+        // Use create_subkey to handle edge case where Run key doesn't exist
+        let (run_key, _) = hkcu
+            .create_subkey(RUN_KEY)
             .map_err(|e| format!("Failed to open registry key: {}", e))?;
 
         run_key
@@ -183,13 +184,13 @@ mod windows {
 
     pub fn disable() -> Result<(), String> {
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let run_key = hkcu
-            .open_subkey_with_flags(RUN_KEY, KEY_WRITE)
-            .map_err(|e| format!("Failed to open registry key: {}", e))?;
+        let Ok(run_key) = hkcu.open_subkey_with_flags(RUN_KEY, KEY_WRITE) else {
+            // Key doesn't exist, so autostart is already disabled
+            return Ok(());
+        };
 
-        run_key
-            .delete_value(VALUE_NAME)
-            .map_err(|e| format!("Failed to delete registry value: {}", e))?;
+        // Ignore error if value doesn't exist (already disabled)
+        let _ = run_key.delete_value(VALUE_NAME);
 
         tracing::info!("Autostart disabled");
         Ok(())
