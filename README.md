@@ -17,9 +17,14 @@ A simple app that acts as a bridge between [Discord](https://discord.com/) and [
 
 <p align="center"><img src="./docs/demo/tray.png" width="260px" alt="Tray"><p>
 
-**Protip**: If you are already using Plex, and would like to link it with Trakt, you can use the [Plex-Trakt-Scrobbler](https://github.com/trakt/Plex-Trakt-Scrobbler) plugin.
+**How it works**: Discrakt polls your Trakt.tv account for "currently watching" status and displays it on Discord. For this to work, **your streaming app must scrobble to Trakt** — meaning it reports what you're watching to Trakt in real-time.
 
-If you already know **Trakt** and how awesome it is this is definitely the best option, as it works **more reliably** and with some extra benefits over the other implementations, such as registering your watch status **wherever you are watching** (TV, phone, across the world, etc.), **in whatever app you are watching on** (Netflix, Roku, Plex, HBO Max), as long as you have a single device running **Discord** and **Discrakt**.
+Popular apps with Trakt integration include:
+- **Stremio** — Enable the [Trakt addon](https://www.stremio.com/addons) in Settings → Addons
+- **Plex** — Use the [Plex-Trakt-Scrobbler](https://github.com/trakt/Plex-Trakt-Scrobbler) plugin
+- **Kodi**, **Infuse**, **VLC** and [many more](https://trakt.tv/apps)
+
+Once your app is scrobbling to Trakt, Discrakt will display your watch status on Discord — **wherever you are watching** (TV, phone, across the world), **in whatever app**, as long as you have a single device running **Discord** and **Discrakt**.
 
 ## Features
 
