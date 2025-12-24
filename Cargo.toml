@@ -35,11 +35,14 @@ tiny_http = "0.12"
 tray-icon = "0.21"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-ksni = { version = "0.3", features = ["blocking"] }
+ksni = { version = "0.3", default-features = false, features = ["blocking", "async-io"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.55"
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winresource = "0.1.28"
@@ -50,10 +53,10 @@ tempfile = "3.14"
 serial_test = "3.2"
 
 [profile.release]
-strip = "symbols"
-lto = true
+strip = "debuginfo"
+lto = "thin"
 codegen-units = 1
-opt-level = "z"
+opt-level = 2
 
 [package.metadata.bundle]
 name = "Discrakt"

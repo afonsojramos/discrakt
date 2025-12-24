@@ -3,11 +3,13 @@
 mod common;
 
 use discrakt::trakt::TraktWatchingResponse;
+#[cfg(target_os = "macos")]
+use discrakt::utils::is_light_mode;
 use discrakt::utils::{
-    create_dark_icon, get_watch_stats, is_light_mode, poll_device_token, request_device_code,
-    user_agent, DeviceTokenPollResult, MediaType, TraktAccessToken, TraktDeviceCode,
-    DEFAULT_DISCORD_APP_ID, DEFAULT_DISCORD_APP_ID_MOVIE, DEFAULT_DISCORD_APP_ID_SHOW,
-    DEFAULT_TMDB_TOKEN, DEFAULT_TRAKT_CLIENT_ID,
+    create_dark_icon, get_watch_stats, poll_device_token, request_device_code, user_agent,
+    DeviceTokenPollResult, MediaType, TraktAccessToken, TraktDeviceCode, DEFAULT_DISCORD_APP_ID,
+    DEFAULT_DISCORD_APP_ID_MOVIE, DEFAULT_DISCORD_APP_ID_SHOW, DEFAULT_TMDB_TOKEN,
+    DEFAULT_TRAKT_CLIENT_ID,
 };
 use image::RgbaImage;
 
