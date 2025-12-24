@@ -10,7 +10,7 @@ use discrakt::{
     state::AppState,
     trakt::Trakt,
     tray::{Tray, TrayCommand},
-    utils::{get_watch_stats, load_config, DEFAULT_DISCORD_APP_ID},
+    utils::{config_dir_path, get_watch_stats, load_config, DEFAULT_DISCORD_APP_ID},
 };
 use std::{
     env, process,
@@ -26,6 +26,28 @@ use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
+
+/// On Windows with hidden console (windows_subsystem = "windows"), attach to parent console
+/// for CLI output. This allows -V, -h, etc. to work when run from cmd.exe or PowerShell.
+#[cfg(target_os = "windows")]
+fn attach_console() {
+    extern "system" {
+        fn AttachConsole(dw_process_id: u32) -> i32;
+    }
+    const ATTACH_PARENT_PROCESS: u32 = 0xFFFFFFFF;
+
+    // SAFETY: AttachConsole is a standard Windows API call that either succeeds
+    // (attaches to parent's console) or fails gracefully (returns 0). It has no
+    // memory safety implications - it only affects stdio handle routing.
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn attach_console() {
+    // No-op on non-Windows platforms
+}
 
 #[cfg(target_os = "macos")]
 fn hide_dock_icon() {
@@ -47,7 +69,7 @@ fn platform_init() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn init_logging() {
+fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let console_layer = fmt::layer()
@@ -55,13 +77,50 @@ fn init_logging() {
         .with_level(true)
         .with_thread_names(true);
 
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(console_layer)
-        .init();
+    // On Windows, also log to a file since the console may be hidden
+    #[cfg(target_os = "windows")]
+    {
+        let log_dir = config_dir_path();
+        // Ensure log directory exists
+        if let Err(e) = std::fs::create_dir_all(&log_dir) {
+            eprintln!(
+                "Warning: Failed to create log directory {:?}: {}",
+                log_dir, e
+            );
+        }
+
+        let file_appender = tracing_appender::rolling::daily(&log_dir, "discrakt.log");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+        let file_layer = fmt::layer()
+            .with_target(true)
+            .with_level(true)
+            .with_thread_names(true)
+            .with_ansi(false) // Disable ANSI colors for file output
+            .with_writer(non_blocking);
+
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(console_layer)
+            .with(file_layer)
+            .init();
+
+        return Some(guard);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(console_layer)
+            .init();
+
+        None
+    }
 }
 
 fn print_help() {
+    let log_dir = config_dir_path();
     println!(
         "Discrakt - Trakt to Discord Rich Presence
 
@@ -77,10 +136,16 @@ Options:
 When run without options, Discrakt starts normally and runs in
 the system tray, updating your Discord status based on Trakt.
 
+Logging:
+    Logs are written to: {}
+    Files are named discrakt.log.YYYY-MM-DD (daily rotation).
+    Set RUST_LOG=debug for verbose output.
+
 Examples:
     discrakt                  Start Discrakt normally
     discrakt --autostart 1    Enable start at login and exit
-    discrakt --autostart=off  Disable start at login and exit"
+    discrakt --autostart=off  Disable start at login and exit",
+        log_dir.display()
     );
 }
 
@@ -116,6 +181,12 @@ fn handle_autostart_arg(value: &str) -> ! {
 
 fn parse_args() {
     let args: Vec<String> = env::args().collect();
+
+    // If we have CLI arguments, attach to parent console first (Windows only)
+    // This ensures output is visible when running from cmd.exe or PowerShell
+    if args.len() > 1 {
+        attach_console();
+    }
 
     // Process first argument only - all current options exit immediately
     if let Some(arg) = args.get(1) {
@@ -195,7 +266,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Handle CLI arguments first (before logging, as --help/--autostart exit immediately)
     parse_args();
 
-    init_logging();
+    // Keep the guard alive for the duration of the program (Windows file logging)
+    let _log_guard = init_logging();
 
     // Platform-specific initialization
     platform_init()?;

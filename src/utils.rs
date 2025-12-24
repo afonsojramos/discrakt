@@ -444,7 +444,12 @@ impl Env {
     }
 }
 
-fn config_dir_path() -> PathBuf {
+/// Returns the application config directory path.
+///
+/// On Windows: `%APPDATA%\discrakt`
+/// On macOS: `~/Library/Application Support/discrakt`
+/// On Linux: `~/.config/discrakt`
+pub fn config_dir_path() -> PathBuf {
     dirs::config_dir()
         .expect("Could not determine config directory")
         .join("discrakt")

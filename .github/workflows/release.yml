@@ -145,6 +145,8 @@ jobs:
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
       - name: Build win64
+        env:
+          DISCRAKT_VERSION: ${{ steps.version.outputs.VERSION }}
         run: cargo build --release
 
       - name: Build MSI installer
