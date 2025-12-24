@@ -145,9 +145,10 @@ mod macos {
 
 #[cfg(target_os = "windows")]
 mod windows {
-    use std::process::Command;
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
+    use winreg::RegKey;
 
-    const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+    const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
     const VALUE_NAME: &str = "Discrakt";
 
     fn exe_path() -> Option<String> {
@@ -157,43 +158,41 @@ mod windows {
     }
 
     pub fn is_enabled() -> bool {
-        let output = Command::new("reg")
-            .args(["query", RUN_KEY, "/v", VALUE_NAME])
-            .output();
-
-        output.map(|o| o.status.success()).unwrap_or(false)
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let Ok(run_key) = hkcu.open_subkey_with_flags(RUN_KEY, KEY_READ) else {
+            return false;
+        };
+        run_key.get_value::<String, _>(VALUE_NAME).is_ok()
     }
 
     pub fn enable() -> Result<(), String> {
         let exe = exe_path().ok_or("Could not determine executable path")?;
 
-        let status = Command::new("reg")
-            .args([
-                "add", RUN_KEY, "/v", VALUE_NAME, "/t", "REG_SZ", "/d", &exe, "/f",
-            ])
-            .status()
-            .map_err(|e| format!("Failed to run reg command: {}", e))?;
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let run_key = hkcu
+            .open_subkey_with_flags(RUN_KEY, KEY_WRITE)
+            .map_err(|e| format!("Failed to open registry key: {}", e))?;
 
-        if status.success() {
-            tracing::info!("Autostart enabled via Registry");
-            Ok(())
-        } else {
-            Err("Failed to add registry key".to_string())
-        }
+        run_key
+            .set_value(VALUE_NAME, &exe)
+            .map_err(|e| format!("Failed to set registry value: {}", e))?;
+
+        tracing::info!("Autostart enabled via Registry");
+        Ok(())
     }
 
     pub fn disable() -> Result<(), String> {
-        let status = Command::new("reg")
-            .args(["delete", RUN_KEY, "/v", VALUE_NAME, "/f"])
-            .status()
-            .map_err(|e| format!("Failed to run reg command: {}", e))?;
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let run_key = hkcu
+            .open_subkey_with_flags(RUN_KEY, KEY_WRITE)
+            .map_err(|e| format!("Failed to open registry key: {}", e))?;
 
-        if status.success() {
-            tracing::info!("Autostart disabled");
-            Ok(())
-        } else {
-            Err("Failed to remove registry key".to_string())
-        }
+        run_key
+            .delete_value(VALUE_NAME)
+            .map_err(|e| format!("Failed to delete registry value: {}", e))?;
+
+        tracing::info!("Autostart disabled");
+        Ok(())
     }
 }
 
