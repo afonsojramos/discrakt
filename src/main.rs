@@ -188,12 +188,6 @@ fn handle_autostart_arg(value: &str) -> ! {
 fn parse_args() {
     let args: Vec<String> = env::args().collect();
 
-    // If we have CLI arguments, attach to parent console first (Windows only)
-    // This ensures output is visible when running from cmd.exe or PowerShell
-    if args.len() > 1 {
-        attach_console();
-    }
-
     // Process first argument only - all current options exit immediately
     if let Some(arg) = args.get(1) {
         match arg.as_str() {
@@ -269,6 +263,11 @@ impl ApplicationHandler for App {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Always try to attach to parent console on Windows.
+    // If launched from Explorer, this safely fails (no parent console).
+    // If launched from cmd/PowerShell, enables console output for logs and CLI flags.
+    attach_console();
+
     // Handle CLI arguments first (before logging, as --help/--autostart exit immediately)
     parse_args();
 
