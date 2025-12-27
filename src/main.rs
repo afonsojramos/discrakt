@@ -10,7 +10,7 @@ use discrakt::{
     state::AppState,
     trakt::Trakt,
     tray::{Tray, TrayCommand},
-    utils::{get_watch_stats, load_config, DEFAULT_DISCORD_APP_ID},
+    utils::{get_watch_stats, load_config, log_dir_path, DEFAULT_DISCORD_APP_ID},
 };
 use std::{
     env, process,
@@ -26,6 +26,28 @@ use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
+
+/// On Windows with hidden console (windows_subsystem = "windows"), attach to parent console
+/// for CLI output. This allows -V, -h, etc. to work when run from cmd.exe or PowerShell.
+#[cfg(target_os = "windows")]
+fn attach_console() {
+    extern "system" {
+        fn AttachConsole(dw_process_id: u32) -> i32;
+    }
+    const ATTACH_PARENT_PROCESS: u32 = 0xFFFFFFFF;
+
+    // SAFETY: AttachConsole is a standard Windows API call that either succeeds
+    // (attaches to parent's console) or fails gracefully (returns 0). It has no
+    // memory safety implications - it only affects stdio handle routing.
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn attach_console() {
+    // No-op on non-Windows platforms
+}
 
 #[cfg(target_os = "macos")]
 fn hide_dock_icon() {
@@ -47,7 +69,7 @@ fn platform_init() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn init_logging() {
+fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let console_layer = fmt::layer()
@@ -55,13 +77,56 @@ fn init_logging() {
         .with_level(true)
         .with_thread_names(true);
 
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(console_layer)
-        .init();
+    // On Windows, also log to a file since the console may be hidden
+    #[cfg(target_os = "windows")]
+    {
+        let log_dir = log_dir_path();
+        // Ensure log directory exists
+        if let Err(e) = std::fs::create_dir_all(&log_dir) {
+            eprintln!(
+                "Warning: Failed to create log directory {:?}: {}",
+                log_dir, e
+            );
+        }
+
+        // Use builder to get proper filename format: discrakt.YYYY-MM-DD.log
+        let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
+            .rotation(tracing_appender::rolling::Rotation::DAILY)
+            .filename_prefix("discrakt")
+            .filename_suffix("log")
+            .build(&log_dir)
+            .expect("Failed to create log file appender");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+        let file_layer = fmt::layer()
+            .with_target(true)
+            .with_level(true)
+            .with_thread_names(true)
+            .with_ansi(false) // Disable ANSI colors for file output
+            .with_writer(non_blocking);
+
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(console_layer)
+            .with(file_layer)
+            .init();
+
+        return Some(guard);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(console_layer)
+            .init();
+
+        None
+    }
 }
 
 fn print_help() {
+    let log_dir = log_dir_path();
     println!(
         "Discrakt - Trakt to Discord Rich Presence
 
@@ -77,10 +142,16 @@ Options:
 When run without options, Discrakt starts normally and runs in
 the system tray, updating your Discord status based on Trakt.
 
+Logging (Windows only):
+    Logs are written to: {}
+    Files are named discrakt.YYYY-MM-DD.log (daily rotation).
+    Set RUST_LOG=debug for verbose output.
+
 Examples:
     discrakt                  Start Discrakt normally
     discrakt --autostart 1    Enable start at login and exit
-    discrakt --autostart=off  Disable start at login and exit"
+    discrakt --autostart=off  Disable start at login and exit",
+        log_dir.display()
     );
 }
 
@@ -192,10 +263,16 @@ impl ApplicationHandler for App {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Always try to attach to parent console on Windows.
+    // If launched from Explorer, this safely fails (no parent console).
+    // If launched from cmd/PowerShell, enables console output for logs and CLI flags.
+    attach_console();
+
     // Handle CLI arguments first (before logging, as --help/--autostart exit immediately)
     parse_args();
 
-    init_logging();
+    // Keep the guard alive for the duration of the program (Windows file logging)
+    let _log_guard = init_logging();
 
     // Platform-specific initialization
     platform_init()?;

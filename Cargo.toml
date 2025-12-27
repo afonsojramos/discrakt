@@ -25,6 +25,7 @@ crossbeam-channel = "0.5"
 winit = "0.30"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 tiny_http = "0.12"
 
 # Platform-specific tray dependencies:

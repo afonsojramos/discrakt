@@ -444,10 +444,35 @@ impl Env {
     }
 }
 
-fn config_dir_path() -> PathBuf {
+/// Returns the application config directory path.
+///
+/// On Windows: `%APPDATA%\discrakt`
+/// On macOS: `~/Library/Application Support/discrakt`
+/// On Linux: `~/.config/discrakt`
+pub fn config_dir_path() -> PathBuf {
     dirs::config_dir()
         .expect("Could not determine config directory")
         .join("discrakt")
+}
+
+/// Returns the directory where logs should be written.
+///
+/// Follows the same lookup order as credentials.ini:
+/// 1. Directory containing the executable (if credentials.ini exists there)
+/// 2. Platform config directory (%APPDATA%\discrakt, etc.)
+///
+/// This ensures logs are written alongside credentials.ini for easier discovery.
+pub fn log_dir_path() -> PathBuf {
+    // Check if credentials.ini exists next to the executable
+    if let Ok(mut exe_path) = env::current_exe() {
+        exe_path.pop();
+        if exe_path.join("credentials.ini").exists() {
+            return exe_path;
+        }
+    }
+
+    // Fall back to config directory
+    config_dir_path()
 }
 
 fn find_config_file() -> Option<PathBuf> {
