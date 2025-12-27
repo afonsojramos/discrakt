@@ -72,57 +72,41 @@ fn platform_init() -> Result<(), Box<dyn std::error::Error>> {
 fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    // On Windows, only log to file (no console output during normal operation)
+    // Log to file only (no console output during normal operation)
     // Console output is only used for CLI flags like --help which print and exit before logging
-    #[cfg(target_os = "windows")]
-    {
-        let log_dir = log_dir_path();
-        // Ensure log directory exists
-        if let Err(e) = std::fs::create_dir_all(&log_dir) {
-            eprintln!(
-                "Warning: Failed to create log directory {:?}: {}",
-                log_dir, e
-            );
-        }
+    // This applies to all platforms since tray apps typically run without a terminal attached
+    let log_dir = log_dir_path();
 
-        // Use builder to get proper filename format: discrakt.YYYY-MM-DD.log
-        let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
-            .rotation(tracing_appender::rolling::Rotation::DAILY)
-            .filename_prefix("discrakt")
-            .filename_suffix("log")
-            .build(&log_dir)
-            .expect("Failed to create log file appender");
-        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-
-        let file_layer = fmt::layer()
-            .with_target(true)
-            .with_level(true)
-            .with_thread_names(true)
-            .with_ansi(false) // Disable ANSI colors for file output
-            .with_writer(non_blocking);
-
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(file_layer)
-            .init();
-
-        return Some(guard);
+    // Ensure log directory exists
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        eprintln!(
+            "Warning: Failed to create log directory {:?}: {}",
+            log_dir, e
+        );
     }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        let console_layer = fmt::layer()
-            .with_target(true)
-            .with_level(true)
-            .with_thread_names(true);
+    // Use builder to get proper filename format: discrakt.YYYY-MM-DD.log
+    let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix("discrakt")
+        .filename_suffix("log")
+        .build(&log_dir)
+        .expect("Failed to create log file appender");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(console_layer)
-            .init();
+    let file_layer = fmt::layer()
+        .with_target(true)
+        .with_level(true)
+        .with_thread_names(true)
+        .with_ansi(false) // Disable ANSI colors for file output
+        .with_writer(non_blocking);
 
-        None
-    }
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(file_layer)
+        .init();
+
+    Some(guard)
 }
 
 fn print_help() {
@@ -142,7 +126,7 @@ Options:
 When run without options, Discrakt starts normally and runs in
 the system tray, updating your Discord status based on Trakt.
 
-Logging (Windows only):
+Logging:
     Logs are written to: {}
     Files are named discrakt.YYYY-MM-DD.log (daily rotation).
     Set RUST_LOG=debug for verbose output.
