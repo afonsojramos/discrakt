@@ -70,7 +70,9 @@ fn platform_init() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    // Default to warn level for minimal logging in production
+    // Users can set RUST_LOG=info or RUST_LOG=debug for verbose output
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
 
     // Log to file only (no console output during normal operation)
     // Console output is only used for CLI flags like --help which print and exit before logging
@@ -86,10 +88,12 @@ fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     }
 
     // Use builder to get proper filename format: discrakt.YYYY-MM-DD.log
+    // Keep only 7 days of logs to prevent unbounded disk usage
     let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
         .rotation(tracing_appender::rolling::Rotation::DAILY)
         .filename_prefix("discrakt")
         .filename_suffix("log")
+        .max_log_files(7)
         .build(&log_dir)
         .expect("Failed to create log file appender");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
@@ -129,7 +133,9 @@ the system tray, updating your Discord status based on Trakt.
 Logging:
     Logs are written to: {}
     Files are named discrakt.YYYY-MM-DD.log (daily rotation).
-    Set RUST_LOG=debug for verbose output.
+    Only warnings and errors are logged by default.
+    Old logs are automatically deleted after 7 days.
+    Set RUST_LOG=info or RUST_LOG=debug for verbose output.
 
 Examples:
     discrakt                  Start Discrakt normally
