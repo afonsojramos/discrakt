@@ -72,12 +72,8 @@ fn platform_init() -> Result<(), Box<dyn std::error::Error>> {
 fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    let console_layer = fmt::layer()
-        .with_target(true)
-        .with_level(true)
-        .with_thread_names(true);
-
-    // On Windows, also log to a file since the console may be hidden
+    // On Windows, only log to file (no console output during normal operation)
+    // Console output is only used for CLI flags like --help which print and exit before logging
     #[cfg(target_os = "windows")]
     {
         let log_dir = log_dir_path();
@@ -107,7 +103,6 @@ fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
 
         tracing_subscriber::registry()
             .with(filter)
-            .with(console_layer)
             .with(file_layer)
             .init();
 
@@ -116,6 +111,11 @@ fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
 
     #[cfg(not(target_os = "windows"))]
     {
+        let console_layer = fmt::layer()
+            .with_target(true)
+            .with_level(true)
+            .with_thread_names(true);
+
         tracing_subscriber::registry()
             .with(filter)
             .with(console_layer)
@@ -196,7 +196,10 @@ fn parse_args() {
                 process::exit(0);
             }
             "--version" | "-V" => {
-                println!("discrakt {}", env!("CARGO_PKG_VERSION"));
+                // Use DISCRAKT_VERSION if set by build.rs (from release workflow),
+                // otherwise fall back to Cargo.toml version
+                let version = option_env!("DISCRAKT_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+                println!("discrakt {}", version);
                 process::exit(0);
             }
             "--autostart" => {

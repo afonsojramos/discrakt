@@ -1,4 +1,10 @@
 fn main() {
+    // Propagate DISCRAKT_VERSION to the main build via cargo:rustc-env
+    // This allows the binary to access the version at compile time via env!("DISCRAKT_VERSION")
+    if let Ok(version) = std::env::var("DISCRAKT_VERSION") {
+        println!("cargo:rustc-env=DISCRAKT_VERSION={}", version);
+    }
+
     #[cfg(target_os = "windows")]
     {
         let mut res = winresource::WindowsResource::new();
