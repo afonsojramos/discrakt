@@ -10,7 +10,7 @@ use discrakt::{
     state::AppState,
     trakt::Trakt,
     tray::{Tray, TrayCommand},
-    utils::{config_dir_path, get_watch_stats, load_config, DEFAULT_DISCORD_APP_ID},
+    utils::{get_watch_stats, load_config, log_dir_path, DEFAULT_DISCORD_APP_ID},
 };
 use std::{
     env, process,
@@ -80,7 +80,7 @@ fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     // On Windows, also log to a file since the console may be hidden
     #[cfg(target_os = "windows")]
     {
-        let log_dir = config_dir_path();
+        let log_dir = log_dir_path();
         // Ensure log directory exists
         if let Err(e) = std::fs::create_dir_all(&log_dir) {
             eprintln!(
@@ -89,7 +89,13 @@ fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
             );
         }
 
-        let file_appender = tracing_appender::rolling::daily(&log_dir, "discrakt.log");
+        // Use builder to get proper filename format: discrakt.YYYY-MM-DD.log
+        let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
+            .rotation(tracing_appender::rolling::Rotation::DAILY)
+            .filename_prefix("discrakt")
+            .filename_suffix("log")
+            .build(&log_dir)
+            .expect("Failed to create log file appender");
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
         let file_layer = fmt::layer()
@@ -120,7 +126,7 @@ fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
 }
 
 fn print_help() {
-    let log_dir = config_dir_path();
+    let log_dir = log_dir_path();
     println!(
         "Discrakt - Trakt to Discord Rich Presence
 
@@ -136,9 +142,9 @@ Options:
 When run without options, Discrakt starts normally and runs in
 the system tray, updating your Discord status based on Trakt.
 
-Logging:
+Logging (Windows only):
     Logs are written to: {}
-    Files are named discrakt.log.YYYY-MM-DD (daily rotation).
+    Files are named discrakt.YYYY-MM-DD.log (daily rotation).
     Set RUST_LOG=debug for verbose output.
 
 Examples:
