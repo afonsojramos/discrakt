@@ -49,6 +49,26 @@ fn attach_console() {
     // No-op on non-Windows platforms
 }
 
+/// On Windows, detach from the parent console before exiting.
+/// This prevents the shell from waiting for input after CLI commands like -V or -h.
+#[cfg(target_os = "windows")]
+fn free_console() {
+    extern "system" {
+        fn FreeConsole() -> i32;
+    }
+
+    // SAFETY: FreeConsole detaches the process from its console. This is safe
+    // and has no memory implications - it only affects stdio handle routing.
+    unsafe {
+        FreeConsole();
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn free_console() {
+    // No-op on non-Windows platforms
+}
+
 #[cfg(target_os = "macos")]
 fn hide_dock_icon() {
     use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
@@ -150,26 +170,31 @@ fn handle_autostart_arg(value: &str) -> ! {
         "1" | "true" | "on" => match autostart::enable() {
             Ok(()) => {
                 println!("Autostart enabled. Discrakt will start automatically at login.");
+                free_console();
                 process::exit(0);
             }
             Err(e) => {
                 eprintln!("Failed to enable autostart: {}", e);
+                free_console();
                 process::exit(1);
             }
         },
         "0" | "false" | "off" => match autostart::disable() {
             Ok(()) => {
                 println!("Autostart disabled.");
+                free_console();
                 process::exit(0);
             }
             Err(e) => {
                 eprintln!("Failed to disable autostart: {}", e);
+                free_console();
                 process::exit(1);
             }
         },
         _ => {
             eprintln!("Invalid value for --autostart: '{}'", value);
             eprintln!("Valid values: 1, true, on (enable) or 0, false, off (disable)");
+            free_console();
             process::exit(1);
         }
     }
@@ -183,6 +208,7 @@ fn parse_args() {
         match arg.as_str() {
             "--help" | "-h" => {
                 print_help();
+                free_console();
                 process::exit(0);
             }
             "--version" | "-V" => {
@@ -190,12 +216,14 @@ fn parse_args() {
                 // otherwise fall back to Cargo.toml version
                 let version = option_env!("DISCRAKT_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
                 println!("discrakt {}", version);
+                free_console();
                 process::exit(0);
             }
             "--autostart" => {
                 let value = args.get(2).map(String::as_str).unwrap_or_else(|| {
                     eprintln!("Error: --autostart requires a value");
                     eprintln!("Use --help for usage information.");
+                    free_console();
                     process::exit(1);
                 });
                 handle_autostart_arg(value);
@@ -205,6 +233,7 @@ fn parse_args() {
                 if value.is_empty() {
                     eprintln!("Error: --autostart requires a value");
                     eprintln!("Use --help for usage information.");
+                    free_console();
                     process::exit(1);
                 }
                 handle_autostart_arg(value);
@@ -212,6 +241,7 @@ fn parse_args() {
             arg => {
                 eprintln!("Unknown option: {}", arg);
                 eprintln!("Use --help for usage information.");
+                free_console();
                 process::exit(1);
             }
         }
