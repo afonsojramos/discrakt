@@ -49,17 +49,87 @@ fn attach_console() {
     // No-op on non-Windows platforms
 }
 
-/// On Windows, detach from the parent console before exiting.
-/// This prevents the shell from waiting for input after CLI commands like -V or -h.
+/// On Windows, send an Enter key to release the console prompt and detach.
+///
+/// When a GUI app (windows_subsystem = "windows") uses AttachConsole() to borrow
+/// the parent console, the shell never waited for the process. So when the app exits,
+/// the shell can't detect this and the prompt hangs until the user presses Enter.
+///
+/// The workaround is to simulate pressing Enter using SendInput before exiting.
+/// We only do this if the console window has focus to avoid sending keys to other apps.
+///
+/// References:
+/// - https://www.tillett.info/2013/05/13/how-to-create-a-windows-program-that-works-as-both-as-a-gui-and-console-application/
+/// - https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput
 #[cfg(target_os = "windows")]
 fn free_console() {
+    use std::mem::size_of;
+
+    // Windows API types and constants
+    const INPUT_KEYBOARD: u32 = 1;
+    const KEYEVENTF_KEYUP: u32 = 0x0002;
+    const VK_RETURN: u16 = 0x0D;
+
+    #[repr(C)]
+    struct KeyboardInput {
+        r#type: u32,
+        vk: u16,
+        scan: u16,
+        flags: u32,
+        time: u32,
+        extra_info: usize,
+    }
+
+    #[repr(C)]
+    struct Input {
+        r#type: u32,
+        ki: KeyboardInput,
+    }
+
     extern "system" {
+        fn GetConsoleWindow() -> *mut std::ffi::c_void;
+        fn GetForegroundWindow() -> *mut std::ffi::c_void;
+        fn SendInput(count: u32, inputs: *const Input, size: i32) -> u32;
         fn FreeConsole() -> i32;
     }
 
-    // SAFETY: FreeConsole detaches the process from its console. This is safe
-    // and has no memory implications - it only affects stdio handle routing.
     unsafe {
+        // Only send Enter if the console window has focus
+        // This prevents sending keys to other applications
+        let console_window = GetConsoleWindow();
+        let foreground_window = GetForegroundWindow();
+
+        if !console_window.is_null() && console_window == foreground_window {
+            let inputs = [
+                // Key down
+                Input {
+                    r#type: INPUT_KEYBOARD,
+                    ki: KeyboardInput {
+                        r#type: INPUT_KEYBOARD,
+                        vk: VK_RETURN,
+                        scan: 0,
+                        flags: 0,
+                        time: 0,
+                        extra_info: 0,
+                    },
+                },
+                // Key up
+                Input {
+                    r#type: INPUT_KEYBOARD,
+                    ki: KeyboardInput {
+                        r#type: INPUT_KEYBOARD,
+                        vk: VK_RETURN,
+                        scan: 0,
+                        flags: KEYEVENTF_KEYUP,
+                        time: 0,
+                        extra_info: 0,
+                    },
+                },
+            ];
+
+            SendInput(2, inputs.as_ptr(), size_of::<Input>() as i32);
+        }
+
         FreeConsole();
     }
 }
