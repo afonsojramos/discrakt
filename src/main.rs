@@ -70,20 +70,29 @@ fn free_console() {
     const KEYEVENTF_KEYUP: u32 = 0x0002;
     const VK_RETURN: u16 = 0x0D;
 
+    // KEYBDINPUT - matches Windows SDK exactly
+    // https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput
     #[repr(C)]
-    struct KeyboardInput {
-        r#type: u32,
-        vk: u16,
-        scan: u16,
-        flags: u32,
+    struct KeybdInput {
+        wVk: u16,
+        wScan: u16,
+        dwFlags: u32,
         time: u32,
-        extra_info: usize,
+        dwExtraInfo: usize,
     }
 
+    // INPUT struct - type field + union (we only use keyboard input)
+    // The union in Windows is 32 bytes (MOUSEINPUT is largest), but since we only
+    // need KEYBDINPUT, we pad to the correct total size of 40 bytes on 64-bit
+    // https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-input
     #[repr(C)]
     struct Input {
-        r#type: u32,
-        ki: KeyboardInput,
+        input_type: u32,
+        _padding: u32, // Alignment padding for the union
+        ki: KeybdInput,
+        // Extra padding to match MOUSEINPUT union size (32 bytes)
+        // KeybdInput is 24 bytes, so we need 8 more bytes
+        _union_padding: [u8; 8],
     }
 
     extern "system" {
@@ -103,27 +112,29 @@ fn free_console() {
             let inputs = [
                 // Key down
                 Input {
-                    r#type: INPUT_KEYBOARD,
-                    ki: KeyboardInput {
-                        r#type: INPUT_KEYBOARD,
-                        vk: VK_RETURN,
-                        scan: 0,
-                        flags: 0,
+                    input_type: INPUT_KEYBOARD,
+                    _padding: 0,
+                    ki: KeybdInput {
+                        wVk: VK_RETURN,
+                        wScan: 0,
+                        dwFlags: 0,
                         time: 0,
-                        extra_info: 0,
+                        dwExtraInfo: 0,
                     },
+                    _union_padding: [0; 8],
                 },
                 // Key up
                 Input {
-                    r#type: INPUT_KEYBOARD,
-                    ki: KeyboardInput {
-                        r#type: INPUT_KEYBOARD,
-                        vk: VK_RETURN,
-                        scan: 0,
-                        flags: KEYEVENTF_KEYUP,
+                    input_type: INPUT_KEYBOARD,
+                    _padding: 0,
+                    ki: KeybdInput {
+                        wVk: VK_RETURN,
+                        wScan: 0,
+                        dwFlags: KEYEVENTF_KEYUP,
                         time: 0,
-                        extra_info: 0,
+                        dwExtraInfo: 0,
                     },
+                    _union_padding: [0; 8],
                 },
             ];
 
