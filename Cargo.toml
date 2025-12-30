@@ -49,7 +49,7 @@ winresource = "0.1.28"
 
 [dev-dependencies]
 mockito = "1.7"
-tempfile = "3.14"
+tempfile = "3.24"
 serial_test = "3.2"
 
 [profile.release]
