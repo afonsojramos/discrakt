@@ -49,6 +49,27 @@ fn attach_console() {
     // No-op on non-Windows platforms
 }
 
+/// On Windows, detach from the parent console before exiting.
+///
+/// Note: When a GUI app (windows_subsystem = "windows") uses AttachConsole() to borrow
+/// the parent console for CLI output, the shell prompt may require an Enter press after
+/// the app exits. This is a known Windows limitation for GUI apps that temporarily
+/// attach to consoles.
+#[cfg(target_os = "windows")]
+fn free_console() {
+    extern "system" {
+        fn FreeConsole() -> i32;
+    }
+    unsafe {
+        FreeConsole();
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn free_console() {
+    // No-op on non-Windows platforms
+}
+
 #[cfg(target_os = "macos")]
 fn hide_dock_icon() {
     use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
@@ -70,59 +91,47 @@ fn platform_init() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    // Default to warn level for minimal logging in production
+    // Users can set RUST_LOG=info or RUST_LOG=debug for verbose output
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
 
-    let console_layer = fmt::layer()
+    // Log to file only (no console output during normal operation)
+    // Console output is only used for CLI flags like --help which print and exit before logging
+    // This applies to all platforms since tray apps typically run without a terminal attached
+    let log_dir = log_dir_path();
+
+    // Ensure log directory exists
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        eprintln!(
+            "Warning: Failed to create log directory {:?}: {}",
+            log_dir, e
+        );
+    }
+
+    // Use builder to get proper filename format: discrakt.YYYY-MM-DD.log
+    // Keep only 7 days of logs to prevent unbounded disk usage
+    let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix("discrakt")
+        .filename_suffix("log")
+        .max_log_files(7)
+        .build(&log_dir)
+        .expect("Failed to create log file appender");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    let file_layer = fmt::layer()
         .with_target(true)
         .with_level(true)
-        .with_thread_names(true);
+        .with_thread_names(true)
+        .with_ansi(false) // Disable ANSI colors for file output
+        .with_writer(non_blocking);
 
-    // On Windows, also log to a file since the console may be hidden
-    #[cfg(target_os = "windows")]
-    {
-        let log_dir = log_dir_path();
-        // Ensure log directory exists
-        if let Err(e) = std::fs::create_dir_all(&log_dir) {
-            eprintln!(
-                "Warning: Failed to create log directory {:?}: {}",
-                log_dir, e
-            );
-        }
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(file_layer)
+        .init();
 
-        // Use builder to get proper filename format: discrakt.YYYY-MM-DD.log
-        let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
-            .rotation(tracing_appender::rolling::Rotation::DAILY)
-            .filename_prefix("discrakt")
-            .filename_suffix("log")
-            .build(&log_dir)
-            .expect("Failed to create log file appender");
-        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-
-        let file_layer = fmt::layer()
-            .with_target(true)
-            .with_level(true)
-            .with_thread_names(true)
-            .with_ansi(false) // Disable ANSI colors for file output
-            .with_writer(non_blocking);
-
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(console_layer)
-            .with(file_layer)
-            .init();
-
-        return Some(guard);
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(console_layer)
-            .init();
-
-        None
-    }
+    Some(guard)
 }
 
 fn print_help() {
@@ -142,10 +151,12 @@ Options:
 When run without options, Discrakt starts normally and runs in
 the system tray, updating your Discord status based on Trakt.
 
-Logging (Windows only):
+Logging:
     Logs are written to: {}
     Files are named discrakt.YYYY-MM-DD.log (daily rotation).
-    Set RUST_LOG=debug for verbose output.
+    Only warnings and errors are logged by default.
+    Old logs are automatically deleted after 7 days.
+    Set RUST_LOG=info or RUST_LOG=debug for verbose output.
 
 Examples:
     discrakt                  Start Discrakt normally
@@ -160,26 +171,31 @@ fn handle_autostart_arg(value: &str) -> ! {
         "1" | "true" | "on" => match autostart::enable() {
             Ok(()) => {
                 println!("Autostart enabled. Discrakt will start automatically at login.");
+                free_console();
                 process::exit(0);
             }
             Err(e) => {
                 eprintln!("Failed to enable autostart: {}", e);
+                free_console();
                 process::exit(1);
             }
         },
         "0" | "false" | "off" => match autostart::disable() {
             Ok(()) => {
                 println!("Autostart disabled.");
+                free_console();
                 process::exit(0);
             }
             Err(e) => {
                 eprintln!("Failed to disable autostart: {}", e);
+                free_console();
                 process::exit(1);
             }
         },
         _ => {
             eprintln!("Invalid value for --autostart: '{}'", value);
             eprintln!("Valid values: 1, true, on (enable) or 0, false, off (disable)");
+            free_console();
             process::exit(1);
         }
     }
@@ -193,16 +209,22 @@ fn parse_args() {
         match arg.as_str() {
             "--help" | "-h" => {
                 print_help();
+                free_console();
                 process::exit(0);
             }
             "--version" | "-V" => {
-                println!("discrakt {}", env!("CARGO_PKG_VERSION"));
+                // Use DISCRAKT_VERSION if set by build.rs (from release workflow),
+                // otherwise fall back to Cargo.toml version
+                let version = option_env!("DISCRAKT_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+                println!("discrakt {}", version);
+                free_console();
                 process::exit(0);
             }
             "--autostart" => {
                 let value = args.get(2).map(String::as_str).unwrap_or_else(|| {
                     eprintln!("Error: --autostart requires a value");
                     eprintln!("Use --help for usage information.");
+                    free_console();
                     process::exit(1);
                 });
                 handle_autostart_arg(value);
@@ -212,6 +234,7 @@ fn parse_args() {
                 if value.is_empty() {
                     eprintln!("Error: --autostart requires a value");
                     eprintln!("Use --help for usage information.");
+                    free_console();
                     process::exit(1);
                 }
                 handle_autostart_arg(value);
@@ -219,6 +242,7 @@ fn parse_args() {
             arg => {
                 eprintln!("Unknown option: {}", arg);
                 eprintln!("Use --help for usage information.");
+                free_console();
                 process::exit(1);
             }
         }
