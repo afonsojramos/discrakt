@@ -49,98 +49,18 @@ fn attach_console() {
     // No-op on non-Windows platforms
 }
 
-/// On Windows, send an Enter key to release the console prompt and detach.
+/// On Windows, detach from the parent console before exiting.
 ///
-/// When a GUI app (windows_subsystem = "windows") uses AttachConsole() to borrow
-/// the parent console, the shell never waited for the process. So when the app exits,
-/// the shell can't detect this and the prompt hangs until the user presses Enter.
-///
-/// The workaround is to simulate pressing Enter using SendInput before exiting.
-/// We only do this if the console window has focus to avoid sending keys to other apps.
-///
-/// References:
-/// - https://www.tillett.info/2013/05/13/how-to-create-a-windows-program-that-works-as-both-as-a-gui-and-console-application/
-/// - https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput
+/// Note: When a GUI app (windows_subsystem = "windows") uses AttachConsole() to borrow
+/// the parent console for CLI output, the shell prompt may require an Enter press after
+/// the app exits. This is a known Windows limitation for GUI apps that temporarily
+/// attach to consoles.
 #[cfg(target_os = "windows")]
 fn free_console() {
-    use std::mem::size_of;
-
-    // Windows API types and constants
-    const INPUT_KEYBOARD: u32 = 1;
-    const KEYEVENTF_KEYUP: u32 = 0x0002;
-    const VK_RETURN: u16 = 0x0D;
-
-    // KEYBDINPUT - matches Windows SDK exactly
-    // https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput
-    #[repr(C)]
-    struct KeybdInput {
-        wVk: u16,
-        wScan: u16,
-        dwFlags: u32,
-        time: u32,
-        dwExtraInfo: usize,
-    }
-
-    // INPUT struct - type field + union (we only use keyboard input)
-    // The union in Windows is 32 bytes (MOUSEINPUT is largest), but since we only
-    // need KEYBDINPUT, we pad to the correct total size of 40 bytes on 64-bit
-    // https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-input
-    #[repr(C)]
-    struct Input {
-        input_type: u32,
-        _padding: u32, // Alignment padding for the union
-        ki: KeybdInput,
-        // Extra padding to match MOUSEINPUT union size (32 bytes)
-        // KeybdInput is 24 bytes, so we need 8 more bytes
-        _union_padding: [u8; 8],
-    }
-
     extern "system" {
-        fn GetConsoleWindow() -> *mut std::ffi::c_void;
-        fn GetForegroundWindow() -> *mut std::ffi::c_void;
-        fn SendInput(count: u32, inputs: *const Input, size: i32) -> u32;
         fn FreeConsole() -> i32;
     }
-
     unsafe {
-        // Only send Enter if the console window has focus
-        // This prevents sending keys to other applications
-        let console_window = GetConsoleWindow();
-        let foreground_window = GetForegroundWindow();
-
-        if !console_window.is_null() && console_window == foreground_window {
-            let inputs = [
-                // Key down
-                Input {
-                    input_type: INPUT_KEYBOARD,
-                    _padding: 0,
-                    ki: KeybdInput {
-                        wVk: VK_RETURN,
-                        wScan: 0,
-                        dwFlags: 0,
-                        time: 0,
-                        dwExtraInfo: 0,
-                    },
-                    _union_padding: [0; 8],
-                },
-                // Key up
-                Input {
-                    input_type: INPUT_KEYBOARD,
-                    _padding: 0,
-                    ki: KeybdInput {
-                        wVk: VK_RETURN,
-                        wScan: 0,
-                        dwFlags: KEYEVENTF_KEYUP,
-                        time: 0,
-                        dwExtraInfo: 0,
-                    },
-                    _union_padding: [0; 8],
-                },
-            ];
-
-            SendInput(2, inputs.as_ptr(), size_of::<Input>() as i32);
-        }
-
         FreeConsole();
     }
 }
