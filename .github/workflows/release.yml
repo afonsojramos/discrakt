@@ -410,7 +410,7 @@ jobs:
 
     steps:
       - name: Update Winget package
-        uses: vedantmgoyal9/winget-releaser@main
+        uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
         with:
           identifier: afonsojramos.discrakt
           installers-regex: '\.msi$'
