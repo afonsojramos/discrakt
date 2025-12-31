@@ -404,6 +404,18 @@ jobs:
             "target/homebrew/discrakt-${{ steps.version.outputs.VERSION }}-x86_64-apple-darwin.tar.gz" \
             --clobber
 
+  update-winget:
+    needs: publish-win
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Update Winget package
+        uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
+        with:
+          identifier: afonsojramos.discrakt
+          installers-regex: '\.msi$'
+          token: ${{ secrets.WINGET_TOKEN }}
+
   update-homebrew:
     needs: publish-macos
     runs-on: ubuntu-latest
