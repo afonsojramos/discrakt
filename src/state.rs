@@ -5,6 +5,7 @@ pub struct AppState {
     pub current_watching: Option<WatchingInfo>,
     pub discord_connected: bool,
     pub is_paused: bool,
+    pub pending_language: Option<String>,
 }
 
 #[derive(Clone)]
