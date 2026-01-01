@@ -27,6 +27,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 tiny_http = "0.12"
+sys-locale = "0.3"
 
 # Platform-specific tray dependencies:
 # - Linux: ksni for native KDE/freedesktop StatusNotifierItem support

@@ -28,6 +28,8 @@ Once your app is scrobbling to Trakt, Discrakt will display your watch status on
 
 ## Features
 
+- 🌐 **Multilingual support** (Automatic system detection & Tray menu selection)
+  - *Localized titles for movies and episodes are fetched via TMDB.*
 - Separate Discord Rich Presence apps for Movies and TV Shows
 - Movie posters and show artwork displayed via TMDB
 - Direct links to IMDB and Trakt pages

@@ -21,6 +21,7 @@ pub struct TraktConfig {
     pub trakt_base_url: Option<String>,
     /// Base URL for TMDB API (defaults to https://api.themoviedb.org)
     pub tmdb_base_url: Option<String>,
+    pub language: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
@@ -76,12 +77,14 @@ pub struct TraktRatingsResponse {
 pub struct Trakt {
     rating_cache: HashMap<String, f64>,
     image_cache: HashMap<String, String>,
+    title_cache: HashMap<String, String>,
     agent: Agent,
     client_id: String,
     username: String,
     oauth_access_token: Option<String>,
     trakt_base_url: String,
     tmdb_base_url: String,
+    language: String,
 }
 
 impl Trakt {
@@ -107,6 +110,7 @@ impl Trakt {
         Trakt {
             rating_cache: HashMap::default(),
             image_cache: HashMap::default(),
+            title_cache: HashMap::default(),
             agent: agent_config.into(),
             client_id: config.client_id,
             username: config.username,
@@ -117,6 +121,7 @@ impl Trakt {
             tmdb_base_url: config
                 .tmdb_base_url
                 .unwrap_or_else(|| DEFAULT_TMDB_BASE_URL.to_string()),
+            language: config.language.unwrap_or_else(|| "en-US".to_string()),
         }
     }
 
@@ -295,6 +300,75 @@ impl Trakt {
                     }
                 }
             }
+        }
+    }
+
+    pub fn set_language(&mut self, language: String) {
+        if self.language != language {
+            tracing::info!("Changing Trakt client language to: {}", language);
+            self.language = language;
+            self.title_cache.clear();
+        }
+    }
+
+    pub fn get_title(
+        &mut self,
+        media_type: MediaType,
+        tmdb_id: String,
+        tmdb_token: String,
+        season: Option<u8>,
+        episode: Option<u8>,
+    ) -> String {
+        let cache_key = if let (Some(s), Some(e)) = (season, episode) {
+            format!("{tmdb_id}_S{s}E{e}")
+        } else {
+            tmdb_id.clone()
+        };
+
+        if let Some(title) = self.title_cache.get(&cache_key) {
+            return title.clone();
+        }
+
+        let endpoint = match media_type {
+            MediaType::Movie => format!(
+                "{}/3/movie/{}?api_key={}&language={}",
+                self.tmdb_base_url, tmdb_id, tmdb_token, self.language
+            ),
+            MediaType::Show => {
+                if let (Some(s), Some(e)) = (season, episode) {
+                    format!(
+                        "{}/3/tv/{}/season/{}/episode/{}?api_key={}&language={}",
+                        self.tmdb_base_url, tmdb_id, s, e, tmdb_token, self.language
+                    )
+                } else {
+                    format!(
+                        "{}/3/tv/{}?api_key={}&language={}",
+                        self.tmdb_base_url, tmdb_id, tmdb_token, self.language
+                    )
+                }
+            }
+        };
+
+        let title = match self.agent.get(&endpoint).call() {
+            Ok(mut resp) => match resp.body_mut().read_json::<serde_json::Value>() {
+                Ok(json) => {
+                    let key = if matches!(media_type, MediaType::Movie) {
+                        "title"
+                    } else {
+                        "name"
+                    };
+                    json[key].as_str().unwrap_or("").to_string()
+                }
+                Err(_) => String::new(),
+            },
+            Err(_) => String::new(),
+        };
+
+        if !title.is_empty() {
+            self.title_cache.insert(cache_key, title.clone());
+            title
+        } else {
+            String::new()
         }
     }
 }

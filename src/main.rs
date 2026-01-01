@@ -280,6 +280,10 @@ impl ApplicationHandler for App {
                     TrayCommand::TogglePause | TrayCommand::ToggleAutostart => {
                         // State is already updated in poll_events
                     }
+                    TrayCommand::SetLanguage(lang) => {
+                        use discrakt::utils::save_language_preference;
+                        save_language_preference(&lang);
+                    }
                 }
             }
         }
@@ -317,11 +321,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let trakt_username = cfg.trakt_username.clone();
     let trakt_access_token = cfg.trakt_access_token.clone();
     let tmdb_token = cfg.tmdb_token.clone();
+    let tmdb_language = cfg.tmdb_language.clone();
 
     // Spawn background polling thread
     let polling_handle = thread::spawn(move || {
         let mut discord = Discord::new(DEFAULT_DISCORD_APP_ID.to_string());
         let mut trakt = Trakt::new(trakt_client_id, trakt_username, trakt_access_token);
+        trakt.set_language(tmdb_language);
 
         discord.connect();
 
@@ -341,6 +347,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if should_quit_clone.load(Ordering::Relaxed) {
                 break;
+            }
+
+            let new_lang = if let Ok(mut state) = app_state_clone.write() {
+                state.pending_language.take()
+            } else {
+                None
+            };
+
+            if let Some(lang) = new_lang {
+                trakt.set_language(lang);
             }
 
             // Check if paused from shared state
