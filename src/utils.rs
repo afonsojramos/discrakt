@@ -3,6 +3,7 @@ use configparser::ini::Ini;
 use serde::Deserialize;
 use serde_json::json;
 use std::{env, path::PathBuf, sync::OnceLock, thread, time::Duration};
+use sys_locale::get_locale;
 use ureq::Agent;
 
 use crate::setup;
@@ -60,6 +61,41 @@ pub const DEFAULT_DISCORD_APP_ID: &str = DEFAULT_DISCORD_APP_ID_MOVIE;
 /// See: https://developer.themoviedb.org/docs/faq
 pub const DEFAULT_TMDB_TOKEN: &str = "21b815a75fec5f1e707e3da1b9b2d7e3";
 
+/// Liste des langues supportées pour le menu
+pub const LANGUAGES: &[(&str, &str)] = &[
+    ("English", "en-US"),
+    ("Français", "fr-FR"),
+    ("Español", "es-ES"),
+    ("Deutsch", "de-DE"),
+    ("Italiano", "it-IT"),
+    ("Português", "pt-PT"),
+    ("Português (Brasil)", "pt-BR"),
+    ("Русский", "ru-RU"),
+    ("日本語 (Japanese)", "ja-JP"),
+    ("简体中文 (Chinese)", "zh-CN"),
+    ("한국어 (Korean)", "ko-KR"),
+    ("Nederlands", "nl-NL"),
+    ("Polski", "pl-PL"),
+    ("Türkçe", "tr-TR"),
+    ("Svenska", "sv-SE"),
+    ("Dansk", "da-DK"),
+    ("Norsk", "no-NO"),
+    ("Suomi", "fi-FI"),
+    ("Čeština", "cs-CZ"),
+    ("Magyar", "hu-HU"),
+    ("Ελληνικά", "el-GR"),
+    ("Română", "ro-RO"),
+    ("Hrvatski", "hr-HR"),
+    ("Slovenský", "sk-SK"),
+    ("Thai", "th-TH"),
+    ("Vietnamese", "vi-VN"),
+    ("Indonesian", "id-ID"),
+    ("Ukrainian", "uk-UA"),
+    ("Arabic", "ar-SA"),
+    ("Hebrew", "he-IL"),
+    ("Hindi", "hi-IN"),
+];
+
 static USER_AGENT: OnceLock<String> = OnceLock::new();
 
 pub fn user_agent() -> &'static str {
@@ -88,6 +124,7 @@ pub struct Env {
     pub trakt_refresh_token: Option<String>,
     pub trakt_refresh_token_expires_at: Option<u64>,
     pub tmdb_token: String,
+    pub tmdb_language: String,
 }
 
 pub struct WatchStats {
@@ -573,6 +610,21 @@ pub fn load_config() -> Result<Env, String> {
             setup_result.trakt_client_id
         };
 
+        let tmdb_language = config
+            .get("Trakt API", "language")
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                let system_lang = get_locale().unwrap_or_else(|| "en-US".to_string());
+
+                let prefix = system_lang.split(['-', '_']).next().unwrap_or("en");
+
+                LANGUAGES
+                    .iter()
+                    .find(|(_, code)| code.starts_with(prefix))
+                    .map(|(_, code)| code.to_string())
+                    .unwrap_or_else(|| "en-US".to_string())
+            });
+
         return Ok(Env {
             trakt_username: setup_result.trakt_username,
             trakt_client_id,
@@ -586,6 +638,7 @@ pub fn load_config() -> Result<Env, String> {
                 .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
                 .unwrap_or_default(),
             tmdb_token: DEFAULT_TMDB_TOKEN.to_string(),
+            tmdb_language,
         });
     }
 
@@ -605,6 +658,21 @@ pub fn load_config() -> Result<Env, String> {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| DEFAULT_TRAKT_CLIENT_ID.to_string());
 
+    let tmdb_language = config
+        .get("Trakt API", "language")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            let system_lang = get_locale().unwrap_or_else(|| "en-US".to_string());
+
+            let prefix = system_lang.split(['-', '_']).next().unwrap_or("en");
+
+            LANGUAGES
+                .iter()
+                .find(|(_, code)| code.starts_with(prefix))
+                .map(|(_, code)| code.to_string())
+                .unwrap_or_else(|| "en-US".to_string())
+        });
+
     Ok(Env {
         trakt_username,
         trakt_client_id,
@@ -618,6 +686,7 @@ pub fn load_config() -> Result<Env, String> {
             .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
             .unwrap_or_default(),
         tmdb_token: DEFAULT_TMDB_TOKEN.to_string(),
+        tmdb_language,
     })
 }
 
@@ -739,4 +808,16 @@ pub fn create_dark_icon(image: &image::RgbaImage) -> image::RgbaImage {
                                    // pixel[3] = alpha, keep as-is
     }
     dark
+}
+
+/// Ajoute cette fonction pour sauvegarder la préférence
+pub fn save_language_preference(language: &str) {
+    if let Some(path) = find_config_file() {
+        let mut config = Ini::new_cs();
+        let _ = config.load(&path);
+        config.setstr("Trakt API", "language", Some(language));
+        if let Err(e) = config.write(&path) {
+            tracing::error!("Failed to save language preference: {}", e);
+        }
+    }
 }

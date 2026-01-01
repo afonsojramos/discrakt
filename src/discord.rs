@@ -164,7 +164,7 @@ impl Discord {
                 );
                 let id_tmdb = movie.ids.tmdb.as_ref().unwrap();
 
-                trakt.get_poster(MediaType::Movie, id_tmdb.to_string(), tmdb_token, 0)
+                trakt.get_poster(MediaType::Movie, id_tmdb.to_string(), tmdb_token.clone(), 0)
             }
             "episode" if trakt_response.episode.is_some() => {
                 let episode = trakt_response.episode.as_ref().unwrap();
@@ -189,7 +189,7 @@ impl Discord {
                 trakt.get_poster(
                     MediaType::Show,
                     id_tmdb.to_string(),
-                    tmdb_token,
+                    tmdb_token.clone(),
                     episode.season,
                 )
             }
@@ -198,6 +198,51 @@ impl Discord {
                 return;
             }
         };
+
+        if let Some(movie) = &trakt_response.movie {
+            if let Some(tmdb_id) = movie.ids.tmdb {
+                let translated = trakt.get_title(
+                    MediaType::Movie,
+                    tmdb_id.to_string(),
+                    tmdb_token.clone(),
+                    None,
+                    None,
+                );
+                if !translated.is_empty() {
+                    payload_data.details = format!("{} ({})", translated, movie.year);
+                }
+            }
+        } else if let Some(show) = &trakt_response.show {
+            if let Some(tmdb_id) = show.ids.tmdb {
+                let show_title = trakt.get_title(
+                    MediaType::Show,
+                    tmdb_id.to_string(),
+                    tmdb_token.clone(),
+                    None,
+                    None,
+                );
+                if !show_title.is_empty() {
+                    payload_data.details = show_title;
+                }
+
+                if let Some(episode) = &trakt_response.episode {
+                    let ep_title = trakt.get_title(
+                        MediaType::Show,
+                        tmdb_id.to_string(),
+                        tmdb_token.clone(),
+                        Some(episode.season),
+                        Some(episode.number),
+                    );
+
+                    if !ep_title.is_empty() {
+                        payload_data.state = format!(
+                            "S{:02}E{:02} - {}",
+                            episode.season, episode.number, ep_title
+                        );
+                    }
+                }
+            }
+        }
 
         let img = match img_url {
             Some(img) => img,
