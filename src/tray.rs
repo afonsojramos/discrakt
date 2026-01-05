@@ -36,7 +36,7 @@ pub struct Tray {
 }
 
 impl Tray {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(current_language: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let icon = Self::load_icon()?;
 
         // Status display (disabled, just for showing info)
@@ -53,12 +53,8 @@ impl Tray {
         let lang_submenu = Submenu::new("Language", true);
         let mut language_items = HashMap::new();
 
-        let current_lang = crate::utils::load_config()
-            .map(|c| c.tmdb_language)
-            .unwrap_or_else(|_| "en-US".to_string());
-
         for (name, code) in LANGUAGES {
-            let is_checked = *code == current_lang;
+            let is_checked = *code == current_language;
             let item = CheckMenuItem::new(*name, true, is_checked, None);
 
             language_items.insert(code.to_string(), item.clone());
@@ -144,6 +140,7 @@ impl Tray {
                     if let Ok(mut app_state) = state.write() {
                         app_state.pending_language = Some(code.clone());
                     }
+                    tracing::info!("Language changed to: {}", code);
                     return Some(TrayCommand::SetLanguage(code.clone()));
                 }
             }

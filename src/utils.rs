@@ -61,7 +61,22 @@ pub const DEFAULT_DISCORD_APP_ID: &str = DEFAULT_DISCORD_APP_ID_MOVIE;
 /// See: https://developer.themoviedb.org/docs/faq
 pub const DEFAULT_TMDB_TOKEN: &str = "21b815a75fec5f1e707e3da1b9b2d7e3";
 
-/// Liste des langues supportées pour le menu
+/// Detects the system language and maps it to a supported TMDB language code.
+///
+/// Falls back to "en-US" if the system language is not recognized or supported.
+fn detect_system_language() -> String {
+    let system_lang = get_locale().unwrap_or_else(|| "en-US".to_string());
+    let prefix = system_lang.split(['-', '_']).next().unwrap_or("en");
+
+    LANGUAGES
+        .iter()
+        .find(|(_, code)| code.starts_with(prefix))
+        .map(|(_, code)| code.to_string())
+        .unwrap_or_else(|| "en-US".to_string())
+}
+
+/// Supported languages for the tray menu.
+/// Each entry is a tuple of (display name, TMDB language code).
 pub const LANGUAGES: &[(&str, &str)] = &[
     ("English", "en-US"),
     ("Français", "fr-FR"),
@@ -613,17 +628,7 @@ pub fn load_config() -> Result<Env, String> {
         let tmdb_language = config
             .get("Trakt API", "language")
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| {
-                let system_lang = get_locale().unwrap_or_else(|| "en-US".to_string());
-
-                let prefix = system_lang.split(['-', '_']).next().unwrap_or("en");
-
-                LANGUAGES
-                    .iter()
-                    .find(|(_, code)| code.starts_with(prefix))
-                    .map(|(_, code)| code.to_string())
-                    .unwrap_or_else(|| "en-US".to_string())
-            });
+            .unwrap_or_else(detect_system_language);
 
         return Ok(Env {
             trakt_username: setup_result.trakt_username,
@@ -661,17 +666,7 @@ pub fn load_config() -> Result<Env, String> {
     let tmdb_language = config
         .get("Trakt API", "language")
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            let system_lang = get_locale().unwrap_or_else(|| "en-US".to_string());
-
-            let prefix = system_lang.split(['-', '_']).next().unwrap_or("en");
-
-            LANGUAGES
-                .iter()
-                .find(|(_, code)| code.starts_with(prefix))
-                .map(|(_, code)| code.to_string())
-                .unwrap_or_else(|| "en-US".to_string())
-        });
+        .unwrap_or_else(detect_system_language);
 
     Ok(Env {
         trakt_username,
@@ -810,7 +805,7 @@ pub fn create_dark_icon(image: &image::RgbaImage) -> image::RgbaImage {
     dark
 }
 
-/// Ajoute cette fonction pour sauvegarder la préférence
+/// Saves the language preference to the config file.
 pub fn save_language_preference(language: &str) {
     if let Some(path) = find_config_file() {
         let mut config = Ini::new_cs();

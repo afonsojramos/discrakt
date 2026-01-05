@@ -196,7 +196,10 @@ impl Tray {
     ///
     /// This spawns a background task to handle the D-Bus StatusNotifierItem protocol.
     /// The tray icon will appear in KDE Plasma and other compatible desktop environments.
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    ///
+    /// # Arguments
+    /// * `_current_language` - The current language code (unused on Linux, kept for API consistency)
+    pub fn new(_current_language: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let (command_sender, command_receiver) = crossbeam_channel::unbounded();
 
         let tray_state = Arc::new(RwLock::new(TrayState {

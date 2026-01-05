@@ -421,7 +421,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     hide_dock_icon();
 
     // Initialize tray after event loop is created
-    let tray = Tray::new()?;
+    let tray = Tray::new(&cfg.tmdb_language)?;
 
     tracing::info!("Discrakt is running in the system tray");
 

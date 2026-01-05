@@ -359,9 +359,25 @@ impl Trakt {
                     };
                     json[key].as_str().unwrap_or("").to_string()
                 }
-                Err(_) => String::new(),
+                Err(e) => {
+                    tracing::debug!(
+                        error = %e,
+                        media_type = %media_type.as_str(),
+                        tmdb_id = %tmdb_id,
+                        "Failed to parse TMDB title response"
+                    );
+                    String::new()
+                }
             },
-            Err(_) => String::new(),
+            Err(e) => {
+                tracing::debug!(
+                    error = %e,
+                    media_type = %media_type.as_str(),
+                    tmdb_id = %tmdb_id,
+                    "Failed to fetch localized title from TMDB"
+                );
+                String::new()
+            }
         };
 
         if !title.is_empty() {
