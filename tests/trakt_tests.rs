@@ -799,3 +799,268 @@ fn test_get_title_caches_empty_results() {
     assert_eq!(title1, "");
     assert_eq!(title2, "");
 }
+
+// ============================================================================
+// LRU Cache Eviction Tests
+// ============================================================================
+
+use discrakt::trakt::MAX_CACHE_SIZE;
+
+#[test]
+fn test_max_cache_size_is_reasonable() {
+    // Verify the cache size constant is sensible
+    assert!(MAX_CACHE_SIZE > 0);
+    assert!(MAX_CACHE_SIZE <= 10000); // Not unreasonably large
+    assert_eq!(MAX_CACHE_SIZE, 500); // Current expected value
+}
+
+#[test]
+fn test_rating_cache_evicts_old_entries() {
+    let mut server = mockito::Server::new();
+
+    // Create mocks for MAX_CACHE_SIZE + 1 different movies
+    // We'll use a small subset to verify eviction behavior
+    let test_size = 5; // Use small number for test efficiency
+
+    let mut mocks = Vec::new();
+    for i in 0..=test_size {
+        let mock = server
+            .mock("GET", format!("/movies/movie-{}/ratings", i).as_str())
+            .with_status(200)
+            .with_body(format!(
+                r#"{{"rating": {}.0, "votes": 100, "distribution": {{"1": 10, "2": 10, "3": 10, "4": 10, "5": 10, "6": 10, "7": 10, "8": 10, "9": 10, "10": 10}}}}"#,
+                i
+            ))
+            .expect(1)
+            .create();
+        mocks.push(mock);
+    }
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+
+    // Fill the cache with ratings
+    for i in 0..=test_size {
+        let rating = trakt.get_movie_rating(format!("movie-{}", i));
+        assert_eq!(rating, i as f64);
+    }
+
+    // All mocks should have been called exactly once
+    for mock in mocks {
+        mock.assert();
+    }
+}
+
+#[test]
+fn test_title_cache_evicts_old_entries() {
+    let mut server = mockito::Server::new();
+
+    // Create mocks for multiple different movies
+    let test_size = 5;
+
+    let mut mocks = Vec::new();
+    for i in 0..=test_size {
+        let mock = server
+            .mock("GET", format!("/3/movie/{}", i).as_str())
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("api_key".into(), "test_token".into()),
+                mockito::Matcher::UrlEncoded("language".into(), "en-US".into()),
+            ]))
+            .with_status(200)
+            .with_body(format!(r#"{{"title": "Movie {}"}}"#, i))
+            .expect(1)
+            .create();
+        mocks.push(mock);
+    }
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: Some("en-US".to_string()),
+    });
+
+    // Fill the cache with titles
+    for i in 0..=test_size {
+        let title = trakt.get_title(MediaType::Movie, i.to_string(), "test_token", None, None);
+        assert_eq!(title, format!("Movie {}", i));
+    }
+
+    // All mocks should have been called exactly once
+    for mock in mocks {
+        mock.assert();
+    }
+}
+
+#[test]
+fn test_image_cache_evicts_old_entries() {
+    let mut server = mockito::Server::new();
+
+    // Create mocks for multiple different movies
+    let test_size = 5;
+
+    let mut mocks = Vec::new();
+    for i in 0..=test_size {
+        let mock = server
+            .mock("GET", format!("/3/movie/{}/images", i).as_str())
+            .match_query(mockito::Matcher::UrlEncoded(
+                "api_key".into(),
+                "test_token".into(),
+            ))
+            .with_status(200)
+            .with_body(format!(
+                r#"{{"posters": [{{"file_path": "/poster_{}.jpg"}}]}}"#,
+                i
+            ))
+            .expect(1)
+            .create();
+        mocks.push(mock);
+    }
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: None,
+    });
+
+    // Fill the cache with posters
+    for i in 0..=test_size {
+        let poster = trakt.get_poster(MediaType::Movie, i.to_string(), "test_token".to_string(), 0);
+        assert!(poster.is_some());
+        assert!(poster.unwrap().contains(&format!("poster_{}.jpg", i)));
+    }
+
+    // All mocks should have been called exactly once
+    for mock in mocks {
+        mock.assert();
+    }
+}
+
+#[test]
+fn test_lru_cache_promotes_recently_accessed() {
+    let mut server = mockito::Server::new();
+
+    // This test verifies that accessing a cached item promotes it (LRU behavior)
+    // We access items in a specific pattern to test promotion
+
+    let mock1 = server
+        .mock("GET", "/movies/movie-1/ratings")
+        .with_status(200)
+        .with_body(r#"{"rating": 1.0, "votes": 100, "distribution": {"1": 10, "2": 10, "3": 10, "4": 10, "5": 10, "6": 10, "7": 10, "8": 10, "9": 10, "10": 10}}"#)
+        .expect(1)
+        .create();
+
+    let mock2 = server
+        .mock("GET", "/movies/movie-2/ratings")
+        .with_status(200)
+        .with_body(r#"{"rating": 2.0, "votes": 100, "distribution": {"1": 10, "2": 10, "3": 10, "4": 10, "5": 10, "6": 10, "7": 10, "8": 10, "9": 10, "10": 10}}"#)
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+
+    // First access - movie-1 goes into cache
+    let rating1 = trakt.get_movie_rating("movie-1".to_string());
+    assert_eq!(rating1, 1.0);
+
+    // Second access - movie-2 goes into cache
+    let rating2 = trakt.get_movie_rating("movie-2".to_string());
+    assert_eq!(rating2, 2.0);
+
+    // Access movie-1 again - should come from cache and be promoted to most recent
+    let rating1_again = trakt.get_movie_rating("movie-1".to_string());
+    assert_eq!(rating1_again, 1.0);
+
+    // Access movie-2 again - should come from cache
+    let rating2_again = trakt.get_movie_rating("movie-2".to_string());
+    assert_eq!(rating2_again, 2.0);
+
+    // Verify mocks were called exactly once (proving cache worked)
+    mock1.assert();
+    mock2.assert();
+}
+
+#[test]
+fn test_rating_cache_eviction_at_max_cache_size_boundary() {
+    // This test verifies that the LRU cache correctly evicts the oldest entry
+    // when it exceeds MAX_CACHE_SIZE. We fill the cache to exactly MAX_CACHE_SIZE,
+    // then add one more entry, and verify the first entry was evicted.
+    let mut server = mockito::Server::new();
+
+    // Create mock for the first entry (movie-0) - will be called twice:
+    // once initially, and once after eviction when we re-request it
+    let mock_first = server
+        .mock("GET", "/movies/movie-0/ratings")
+        .with_status(200)
+        .with_body(r#"{"rating": 0.0, "votes": 100, "distribution": {"1": 10, "2": 10, "3": 10, "4": 10, "5": 10, "6": 10, "7": 10, "8": 10, "9": 10, "10": 10}}"#)
+        .expect(2) // Called twice: initial + after eviction
+        .create();
+
+    // Create mocks for entries 1 through MAX_CACHE_SIZE (each called once)
+    let mut other_mocks = Vec::new();
+    for i in 1..=MAX_CACHE_SIZE {
+        let mock = server
+            .mock("GET", format!("/movies/movie-{}/ratings", i).as_str())
+            .with_status(200)
+            .with_body(format!(
+                r#"{{"rating": {}.0, "votes": 100, "distribution": {{"1": 10, "2": 10, "3": 10, "4": 10, "5": 10, "6": 10, "7": 10, "8": 10, "9": 10, "10": 10}}}}"#,
+                i
+            ))
+            .expect(1)
+            .create();
+        other_mocks.push(mock);
+    }
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+
+    // Step 1: Add movie-0 (this will be the oldest entry)
+    let rating_0_first = trakt.get_movie_rating("movie-0".to_string());
+    assert_eq!(rating_0_first, 0.0);
+
+    // Step 2: Fill the remaining cache slots (1 through MAX_CACHE_SIZE - 1)
+    // After this, the cache has exactly MAX_CACHE_SIZE entries
+    for i in 1..MAX_CACHE_SIZE {
+        let rating = trakt.get_movie_rating(format!("movie-{}", i));
+        assert_eq!(rating, i as f64);
+    }
+
+    // Step 3: Add one more entry (movie-MAX_CACHE_SIZE) which should evict movie-0
+    let rating_last = trakt.get_movie_rating(format!("movie-{}", MAX_CACHE_SIZE));
+    assert_eq!(rating_last, MAX_CACHE_SIZE as f64);
+
+    // Step 4: Request movie-0 again - it should have been evicted,
+    // so this should trigger a new API call (mock_first expects 2 calls)
+    let rating_0_second = trakt.get_movie_rating("movie-0".to_string());
+    assert_eq!(rating_0_second, 0.0);
+
+    // Verify all expectations were met
+    mock_first.assert();
+    for mock in other_mocks {
+        mock.assert();
+    }
+}

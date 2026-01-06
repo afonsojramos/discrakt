@@ -1,9 +1,17 @@
+use lru::LruCache;
 use serde::Deserialize;
 use serde_json::Value;
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 use ureq::Agent;
 
 use crate::utils::{user_agent, MediaType};
+
+/// Maximum number of entries to store in each cache.
+///
+/// This prevents unbounded memory growth for long-running instances.
+/// 500 entries is generous for typical usage (watching ~10 movies/shows per day
+/// would take 50 days to fill the cache).
+pub const MAX_CACHE_SIZE: usize = 500;
 
 /// Default Trakt API base URL.
 pub const DEFAULT_TRAKT_BASE_URL: &str = "https://api.trakt.tv";
@@ -75,9 +83,12 @@ pub struct TraktRatingsResponse {
 }
 
 pub struct Trakt {
-    rating_cache: HashMap<String, f64>,
-    image_cache: HashMap<String, String>,
-    title_cache: HashMap<String, String>,
+    /// LRU cache for movie ratings, keyed by movie slug.
+    rating_cache: LruCache<String, f64>,
+    /// LRU cache for poster image URLs, keyed by TMDB ID.
+    image_cache: LruCache<String, String>,
+    /// LRU cache for localized titles, keyed by language + TMDB ID.
+    title_cache: LruCache<String, String>,
     agent: Agent,
     client_id: String,
     username: String,
@@ -107,10 +118,14 @@ impl Trakt {
             .user_agent(user_agent())
             .build();
 
+        // SAFETY: MAX_CACHE_SIZE is a non-zero constant
+        let cache_size =
+            NonZeroUsize::new(MAX_CACHE_SIZE).expect("MAX_CACHE_SIZE must be non-zero");
+
         Trakt {
-            rating_cache: HashMap::default(),
-            image_cache: HashMap::default(),
-            title_cache: HashMap::default(),
+            rating_cache: LruCache::new(cache_size),
+            image_cache: LruCache::new(cache_size),
+            title_cache: LruCache::new(cache_size),
             agent: agent_config.into(),
             client_id: config.client_id,
             username: config.username,
@@ -193,112 +208,110 @@ impl Trakt {
         tmdb_token: String,
         season_id: u8,
     ) -> Option<String> {
-        match self.image_cache.get(&tmdb_id) {
-            Some(image_url) => Some(image_url.to_string()),
-            None => {
-                let endpoint = match media_type {
-                    MediaType::Movie => format!(
-                        "{}/3/movie/{tmdb_id}/images?api_key={tmdb_token}",
-                        self.tmdb_base_url
-                    ),
-                    MediaType::Show => format!(
-                        "{}/3/tv/{tmdb_id}/season/{season_id}/images?api_key={tmdb_token}",
-                        self.tmdb_base_url
-                    ),
-                };
+        if let Some(image_url) = self.image_cache.get(&tmdb_id) {
+            return Some(image_url.clone());
+        }
 
-                let mut response = match self.agent.get(&endpoint).call() {
-                    Ok(response) => response,
-                    Err(ureq::Error::StatusCode(401)) => {
-                        tracing::error!(
-                            endpoint = %endpoint,
-                            "TMDB API key expired or invalid"
-                        );
-                        return None;
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            media_type = %media_type.as_str(),
-                            error = %e,
-                            "Error fetching image"
-                        );
-                        return None;
-                    }
-                };
+        let endpoint = match media_type {
+            MediaType::Movie => format!(
+                "{}/3/movie/{tmdb_id}/images?api_key={tmdb_token}",
+                self.tmdb_base_url
+            ),
+            MediaType::Show => format!(
+                "{}/3/tv/{tmdb_id}/season/{season_id}/images?api_key={tmdb_token}",
+                self.tmdb_base_url
+            ),
+        };
 
-                match response.body_mut().read_json::<Value>() {
-                    Ok(body) => {
-                        if body["posters"].as_array().unwrap_or(&vec![]).is_empty() {
-                            tracing::warn!(
-                                media_type = %media_type.as_str(),
-                                "Image not found in TMDB response"
-                            );
-                            return None;
-                        }
+        let mut response = match self.agent.get(&endpoint).call() {
+            Ok(response) => response,
+            Err(ureq::Error::StatusCode(401)) => {
+                tracing::error!(
+                    endpoint = %endpoint,
+                    "TMDB API key expired or invalid"
+                );
+                return None;
+            }
+            Err(e) => {
+                tracing::error!(
+                    media_type = %media_type.as_str(),
+                    error = %e,
+                    "Error fetching image"
+                );
+                return None;
+            }
+        };
 
-                        let image_url = format!(
-                            "https://image.tmdb.org/t/p/w600_and_h600_bestv2{}",
-                            body["posters"][0]
-                                .clone()
-                                .get("file_path")
-                                .unwrap()
-                                .as_str()
-                                .unwrap()
-                        );
-
-                        // Cache the image URL
-                        self.image_cache.insert(tmdb_id, image_url.clone());
-                        Some(image_url)
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            media_type = %media_type.as_str(),
-                            error = %e,
-                            "Failed to parse image response"
-                        );
-                        None
-                    }
+        match response.body_mut().read_json::<Value>() {
+            Ok(body) => {
+                if body["posters"].as_array().unwrap_or(&vec![]).is_empty() {
+                    tracing::warn!(
+                        media_type = %media_type.as_str(),
+                        "Image not found in TMDB response"
+                    );
+                    return None;
                 }
+
+                let image_url = format!(
+                    "https://image.tmdb.org/t/p/w600_and_h600_bestv2{}",
+                    body["posters"][0]
+                        .clone()
+                        .get("file_path")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                );
+
+                // Cache the image URL (LRU will evict oldest if full)
+                self.image_cache.put(tmdb_id, image_url.clone());
+                Some(image_url)
+            }
+            Err(e) => {
+                tracing::error!(
+                    media_type = %media_type.as_str(),
+                    error = %e,
+                    "Failed to parse image response"
+                );
+                None
             }
         }
     }
 
     pub fn get_movie_rating(&mut self, movie_slug: String) -> f64 {
-        match self.rating_cache.get(&movie_slug) {
-            Some(rating) => *rating,
-            None => {
-                let endpoint = format!("{}/movies/{movie_slug}/ratings", self.trakt_base_url);
+        if let Some(rating) = self.rating_cache.get(&movie_slug) {
+            return *rating;
+        }
 
-                let mut response = match self
-                    .agent
-                    .get(&endpoint)
-                    .header("Content-Type", "application/json")
-                    .header("trakt-api-version", "2")
-                    .header("trakt-api-key", &self.client_id)
-                    .call()
-                {
-                    Ok(response) => response,
-                    Err(ureq::Error::StatusCode(code)) => {
-                        self.handle_auth_error(code, &endpoint);
-                        return 0.0;
-                    }
-                    Err(e) => {
-                        tracing::error!(error = %e, "Network error fetching movie rating");
-                        return 0.0;
-                    }
-                };
+        let endpoint = format!("{}/movies/{movie_slug}/ratings", self.trakt_base_url);
 
-                match response.body_mut().read_json::<TraktRatingsResponse>() {
-                    Ok(body) => {
-                        self.rating_cache
-                            .insert(movie_slug.to_string(), body.rating);
-                        body.rating
-                    }
-                    Err(e) => {
-                        tracing::error!(error = %e, "Failed to parse movie rating response");
-                        0.0
-                    }
-                }
+        let mut response = match self
+            .agent
+            .get(&endpoint)
+            .header("Content-Type", "application/json")
+            .header("trakt-api-version", "2")
+            .header("trakt-api-key", &self.client_id)
+            .call()
+        {
+            Ok(response) => response,
+            Err(ureq::Error::StatusCode(code)) => {
+                self.handle_auth_error(code, &endpoint);
+                return 0.0;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Network error fetching movie rating");
+                return 0.0;
+            }
+        };
+
+        match response.body_mut().read_json::<TraktRatingsResponse>() {
+            Ok(body) => {
+                // Cache the rating (LRU will evict oldest if full)
+                self.rating_cache.put(movie_slug, body.rating);
+                body.rating
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to parse movie rating response");
+                0.0
             }
         }
     }
@@ -403,8 +416,8 @@ impl Trakt {
             }
         };
 
-        // Cache both successful and empty results to avoid repeated API calls
-        self.title_cache.insert(cache_key, title.clone());
+        // Cache both successful and empty results (LRU will evict oldest if full)
+        self.title_cache.put(cache_key, title.clone());
         title
     }
 }
