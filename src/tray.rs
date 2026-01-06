@@ -4,20 +4,22 @@
 //! Linux uses the ksni-based implementation in tray_linux.rs.
 
 use crossbeam_channel::Receiver;
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tray_icon::{
-    menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
     Icon, TrayIcon, TrayIconBuilder,
 };
 
 use crate::autostart;
 use crate::state::AppState;
-use crate::utils::{create_dark_icon, is_light_mode};
+use crate::utils::{create_dark_icon, is_light_mode, LANGUAGES};
 
 pub enum TrayCommand {
     Quit,
     TogglePause,
     ToggleAutostart,
+    SetLanguage(String),
 }
 
 pub struct Tray {
@@ -30,10 +32,11 @@ pub struct Tray {
     autostart_item: CheckMenuItem,
     status_item: MenuItem,
     last_status: String,
+    language_items: HashMap<String, CheckMenuItem>,
 }
 
 impl Tray {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(current_language: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let icon = Self::load_icon()?;
 
         // Status display (disabled, just for showing info)
@@ -47,11 +50,23 @@ impl Tray {
         let autostart_item_id = autostart_item.id().clone();
         let quit_item_id = quit_item.id().clone();
 
+        let lang_submenu = Submenu::new("Language", true);
+        let mut language_items = HashMap::new();
+
+        for (name, code) in LANGUAGES {
+            let is_checked = *code == current_language;
+            let item = CheckMenuItem::new(*name, true, is_checked, None);
+
+            language_items.insert(code.to_string(), item.clone());
+            lang_submenu.append(&item)?;
+        }
+
         let menu = Menu::new();
         menu.append(&status_item)?;
         menu.append(&PredefinedMenuItem::separator())?;
         menu.append(&pause_item)?;
         menu.append(&autostart_item)?;
+        menu.append(&lang_submenu)?;
         menu.append(&PredefinedMenuItem::separator())?;
         menu.append(&quit_item)?;
 
@@ -75,6 +90,7 @@ impl Tray {
             autostart_item,
             status_item,
             last_status: String::new(),
+            language_items,
         })
     }
 
@@ -96,6 +112,12 @@ impl Tray {
         Icon::from_rgba(final_image.into_raw(), width, height).map_err(|e| e.into())
     }
 
+    fn update_language_checks(&self, selected_code: &str) {
+        for (code, item) in &self.language_items {
+            item.set_checked(code == selected_code);
+        }
+    }
+
     pub fn update_status(&mut self, state: &Arc<RwLock<AppState>>) {
         if let Ok(state) = state.read() {
             let status = state.status_text();
@@ -111,6 +133,18 @@ impl Tray {
 
     pub fn poll_events(&mut self, state: &Arc<RwLock<AppState>>) -> Option<TrayCommand> {
         if let Ok(event) = self.menu_receiver.try_recv() {
+            for (code, item) in &self.language_items {
+                if event.id == item.id() {
+                    self.update_language_checks(code);
+
+                    if let Ok(mut app_state) = state.write() {
+                        app_state.pending_language = Some(code.clone());
+                    }
+                    tracing::info!("Language changed to: {}", code);
+                    return Some(TrayCommand::SetLanguage(code.clone()));
+                }
+            }
+
             if event.id == self.quit_item_id {
                 tracing::info!("Quit requested from tray menu");
                 return Some(TrayCommand::Quit);

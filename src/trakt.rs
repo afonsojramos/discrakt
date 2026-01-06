@@ -21,6 +21,7 @@ pub struct TraktConfig {
     pub trakt_base_url: Option<String>,
     /// Base URL for TMDB API (defaults to https://api.themoviedb.org)
     pub tmdb_base_url: Option<String>,
+    pub language: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
@@ -76,12 +77,14 @@ pub struct TraktRatingsResponse {
 pub struct Trakt {
     rating_cache: HashMap<String, f64>,
     image_cache: HashMap<String, String>,
+    title_cache: HashMap<String, String>,
     agent: Agent,
     client_id: String,
     username: String,
     oauth_access_token: Option<String>,
     trakt_base_url: String,
     tmdb_base_url: String,
+    language: String,
 }
 
 impl Trakt {
@@ -107,6 +110,7 @@ impl Trakt {
         Trakt {
             rating_cache: HashMap::default(),
             image_cache: HashMap::default(),
+            title_cache: HashMap::default(),
             agent: agent_config.into(),
             client_id: config.client_id,
             username: config.username,
@@ -117,6 +121,7 @@ impl Trakt {
             tmdb_base_url: config
                 .tmdb_base_url
                 .unwrap_or_else(|| DEFAULT_TMDB_BASE_URL.to_string()),
+            language: config.language.unwrap_or_else(|| "en-US".to_string()),
         }
     }
 
@@ -296,5 +301,110 @@ impl Trakt {
                 }
             }
         }
+    }
+
+    /// Sets the preferred language for TMDB title lookups.
+    ///
+    /// When the language changes, the title cache is cleared to ensure
+    /// fresh translations are fetched on next request.
+    ///
+    /// # Arguments
+    /// * `language` - TMDB language code (e.g., "en-US", "fr-FR")
+    pub fn set_language(&mut self, language: String) {
+        if self.language != language {
+            tracing::info!("Changing Trakt client language to: {}", language);
+            self.language = language;
+            self.title_cache.clear();
+        }
+    }
+
+    /// Fetches a localized title from TMDB for the given media.
+    ///
+    /// Results are cached to minimize API calls. Returns an empty string
+    /// if no translation is available (which is also cached to avoid
+    /// repeated lookups for untranslated content).
+    ///
+    /// # Arguments
+    /// * `media_type` - Whether this is a Movie or Show
+    /// * `tmdb_id` - The TMDB ID for the media
+    /// * `tmdb_token` - API token for TMDB requests
+    /// * `season` - Season number (required for episode lookups)
+    /// * `episode` - Episode number (required for episode lookups)
+    ///
+    /// # Returns
+    /// The localized title, or empty string if unavailable
+    pub fn get_title(
+        &mut self,
+        media_type: MediaType,
+        tmdb_id: String,
+        tmdb_token: &str,
+        season: Option<u8>,
+        episode: Option<u8>,
+    ) -> String {
+        // Include language in cache key to ensure correct translations when language changes
+        let cache_key = if let (Some(s), Some(e)) = (season, episode) {
+            format!("{}_{tmdb_id}_S{s}E{e}", self.language)
+        } else {
+            format!("{}_{tmdb_id}", self.language)
+        };
+
+        if let Some(title) = self.title_cache.get(&cache_key) {
+            return title.clone();
+        }
+
+        let endpoint = match media_type {
+            MediaType::Movie => format!(
+                "{}/3/movie/{}?api_key={}&language={}",
+                self.tmdb_base_url, tmdb_id, tmdb_token, self.language
+            ),
+            MediaType::Show => {
+                if let (Some(s), Some(e)) = (season, episode) {
+                    format!(
+                        "{}/3/tv/{}/season/{}/episode/{}?api_key={}&language={}",
+                        self.tmdb_base_url, tmdb_id, s, e, tmdb_token, self.language
+                    )
+                } else {
+                    format!(
+                        "{}/3/tv/{}?api_key={}&language={}",
+                        self.tmdb_base_url, tmdb_id, tmdb_token, self.language
+                    )
+                }
+            }
+        };
+
+        let title = match self.agent.get(&endpoint).call() {
+            Ok(mut resp) => match resp.body_mut().read_json::<serde_json::Value>() {
+                Ok(json) => {
+                    let key = if matches!(media_type, MediaType::Movie) {
+                        "title"
+                    } else {
+                        "name"
+                    };
+                    json[key].as_str().unwrap_or("").to_string()
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        error = %e,
+                        media_type = %media_type.as_str(),
+                        tmdb_id = %tmdb_id,
+                        "Failed to parse TMDB title response"
+                    );
+                    String::new()
+                }
+            },
+            Err(e) => {
+                tracing::debug!(
+                    error = %e,
+                    media_type = %media_type.as_str(),
+                    tmdb_id = %tmdb_id,
+                    "Failed to fetch localized title from TMDB"
+                );
+                String::new()
+            }
+        };
+
+        // Cache both successful and empty results to avoid repeated API calls
+        self.title_cache.insert(cache_key, title.clone());
+        title
     }
 }

@@ -3,6 +3,7 @@ use configparser::ini::Ini;
 use serde::Deserialize;
 use serde_json::json;
 use std::{env, path::PathBuf, sync::OnceLock, thread, time::Duration};
+use sys_locale::get_locale;
 use ureq::Agent;
 
 use crate::setup;
@@ -60,6 +61,89 @@ pub const DEFAULT_DISCORD_APP_ID: &str = DEFAULT_DISCORD_APP_ID_MOVIE;
 /// See: https://developer.themoviedb.org/docs/faq
 pub const DEFAULT_TMDB_TOKEN: &str = "21b815a75fec5f1e707e3da1b9b2d7e3";
 
+/// Detects the system language and maps it to a supported TMDB language code.
+///
+/// First attempts an exact match (e.g., "pt-BR" matches "pt-BR"), then falls
+/// back to prefix matching (e.g., "pt" matches "pt-PT"). This ensures users
+/// get their regional variant when available.
+///
+/// Falls back to "en-US" if the system language is not recognized or supported.
+fn detect_system_language() -> String {
+    let system_lang = get_locale().unwrap_or_else(|| "en-US".to_string());
+    // Normalize separator: convert underscore to hyphen for consistent matching
+    let normalized = system_lang.replace('_', "-");
+
+    // Try exact match first (e.g., "pt-BR" -> "pt-BR")
+    if let Some((_, code)) = LANGUAGES.iter().find(|(_, code)| *code == normalized) {
+        return code.to_string();
+    }
+
+    // Fall back to prefix match (e.g., "pt" -> "pt-PT")
+    // Use precise prefix matching to avoid false positives (e.g., "e" matching "el-GR")
+    let prefix = normalized.split('-').next().unwrap_or("en");
+    LANGUAGES
+        .iter()
+        .find(|(_, code)| code.split('-').next() == Some(prefix))
+        .map(|(_, code)| code.to_string())
+        .unwrap_or_else(|| "en-US".to_string())
+}
+
+/// Supported languages for the tray menu and TMDB title localization.
+///
+/// Each entry is a tuple of `(display_name, tmdb_language_code)`:
+/// - `display_name`: Human-readable name shown in the tray menu (in native language)
+/// - `tmdb_language_code`: TMDB API language code in the format `xx-YY` (ISO 639-1 + ISO 3166-1)
+///
+/// # Adding New Languages
+///
+/// To add a new language:
+/// 1. Find the TMDB language code from <https://developer.themoviedb.org/docs/languages>
+/// 2. Add a tuple with the native language name and TMDB code
+/// 3. Language codes must follow the `xx-YY` format (e.g., "pt-BR", "zh-CN")
+///
+/// # Examples
+///
+/// ```
+/// use discrakt::utils::LANGUAGES;
+///
+/// // Find English display name and code
+/// let english = LANGUAGES.iter().find(|(_, code)| *code == "en-US");
+/// assert_eq!(english, Some(&("English", "en-US")));
+/// ```
+pub const LANGUAGES: &[(&str, &str)] = &[
+    ("English", "en-US"),
+    ("Français", "fr-FR"),
+    ("Español", "es-ES"),
+    ("Deutsch", "de-DE"),
+    ("Italiano", "it-IT"),
+    ("Português", "pt-PT"),
+    ("Português (Brasil)", "pt-BR"),
+    ("Русский", "ru-RU"),
+    ("日本語 (Japanese)", "ja-JP"),
+    ("简体中文 (Chinese)", "zh-CN"),
+    ("한국어 (Korean)", "ko-KR"),
+    ("Nederlands", "nl-NL"),
+    ("Polski", "pl-PL"),
+    ("Türkçe", "tr-TR"),
+    ("Svenska", "sv-SE"),
+    ("Dansk", "da-DK"),
+    ("Norsk", "no-NO"),
+    ("Suomi", "fi-FI"),
+    ("Čeština", "cs-CZ"),
+    ("Magyar", "hu-HU"),
+    ("Ελληνικά", "el-GR"),
+    ("Română", "ro-RO"),
+    ("Hrvatski", "hr-HR"),
+    ("Slovenský", "sk-SK"),
+    ("Thai", "th-TH"),
+    ("Vietnamese", "vi-VN"),
+    ("Indonesian", "id-ID"),
+    ("Ukrainian", "uk-UA"),
+    ("Arabic", "ar-SA"),
+    ("Hebrew", "he-IL"),
+    ("Hindi", "hi-IN"),
+];
+
 static USER_AGENT: OnceLock<String> = OnceLock::new();
 
 pub fn user_agent() -> &'static str {
@@ -88,6 +172,7 @@ pub struct Env {
     pub trakt_refresh_token: Option<String>,
     pub trakt_refresh_token_expires_at: Option<u64>,
     pub tmdb_token: String,
+    pub tmdb_language: String,
 }
 
 pub struct WatchStats {
@@ -573,6 +658,11 @@ pub fn load_config() -> Result<Env, String> {
             setup_result.trakt_client_id
         };
 
+        let tmdb_language = config
+            .get("Trakt API", "language")
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(detect_system_language);
+
         return Ok(Env {
             trakt_username: setup_result.trakt_username,
             trakt_client_id,
@@ -586,6 +676,7 @@ pub fn load_config() -> Result<Env, String> {
                 .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
                 .unwrap_or_default(),
             tmdb_token: DEFAULT_TMDB_TOKEN.to_string(),
+            tmdb_language,
         });
     }
 
@@ -605,6 +696,11 @@ pub fn load_config() -> Result<Env, String> {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| DEFAULT_TRAKT_CLIENT_ID.to_string());
 
+    let tmdb_language = config
+        .get("Trakt API", "language")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(detect_system_language);
+
     Ok(Env {
         trakt_username,
         trakt_client_id,
@@ -618,6 +714,7 @@ pub fn load_config() -> Result<Env, String> {
             .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
             .unwrap_or_default(),
         tmdb_token: DEFAULT_TMDB_TOKEN.to_string(),
+        tmdb_language,
     })
 }
 
@@ -739,4 +836,20 @@ pub fn create_dark_icon(image: &image::RgbaImage) -> image::RgbaImage {
                                    // pixel[3] = alpha, keep as-is
     }
     dark
+}
+
+/// Saves the language preference to the config file.
+pub fn save_language_preference(language: &str) {
+    if let Some(path) = find_config_file() {
+        let mut config = Ini::new_cs();
+        if let Err(e) = config.load(&path) {
+            tracing::debug!("Could not load existing config (creating new): {}", e);
+        }
+        config.setstr("Trakt API", "language", Some(language));
+        if let Err(e) = config.write(&path) {
+            tracing::error!("Failed to save language preference: {}", e);
+        }
+    } else {
+        tracing::error!("Failed to save language preference: config file not found");
+    }
 }

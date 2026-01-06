@@ -159,6 +159,7 @@ fn test_trakt_config_default() {
     assert!(config.oauth_access_token.is_none());
     assert!(config.trakt_base_url.is_none());
     assert!(config.tmdb_base_url.is_none());
+    assert!(config.language.is_none());
 }
 
 #[test]
@@ -169,6 +170,7 @@ fn test_trakt_config_with_values() {
         oauth_access_token: Some("token123".to_string()),
         trakt_base_url: Some("http://localhost:8080".to_string()),
         tmdb_base_url: Some("http://localhost:8081".to_string()),
+        language: Some("fr-FR".to_string()),
     };
 
     assert_eq!(config.client_id, "my_client_id");
@@ -182,6 +184,7 @@ fn test_trakt_config_with_values() {
         config.tmdb_base_url,
         Some("http://localhost:8081".to_string())
     );
+    assert_eq!(config.language, Some("fr-FR".to_string()));
 }
 
 // ============================================================================
@@ -209,6 +212,7 @@ fn test_trakt_with_config_default_urls() {
         oauth_access_token: None,
         trakt_base_url: None,
         tmdb_base_url: None,
+        language: None,
     };
 
     let trakt = Trakt::with_config(config);
@@ -224,6 +228,7 @@ fn test_trakt_with_config_custom_urls() {
         oauth_access_token: None,
         trakt_base_url: Some("http://localhost:8080".to_string()),
         tmdb_base_url: Some("http://localhost:8081".to_string()),
+        language: None,
     };
 
     let trakt = Trakt::with_config(config);
@@ -253,6 +258,7 @@ fn test_get_watching_returns_movie() {
         oauth_access_token: None,
         trakt_base_url: Some(server.url()),
         tmdb_base_url: None,
+        language: None,
     });
 
     let result = trakt.get_watching();
@@ -283,6 +289,7 @@ fn test_get_watching_returns_episode() {
         oauth_access_token: None,
         trakt_base_url: Some(server.url()),
         tmdb_base_url: None,
+        language: None,
     });
 
     let result = trakt.get_watching();
@@ -311,6 +318,7 @@ fn test_get_watching_returns_none_when_not_watching() {
         oauth_access_token: None,
         trakt_base_url: Some(server.url()),
         tmdb_base_url: None,
+        language: None,
     });
 
     let result = trakt.get_watching();
@@ -334,6 +342,7 @@ fn test_get_watching_handles_401() {
         oauth_access_token: None,
         trakt_base_url: Some(server.url()),
         tmdb_base_url: None,
+        language: None,
     });
 
     let result = trakt.get_watching();
@@ -357,6 +366,7 @@ fn test_get_watching_handles_403() {
         oauth_access_token: None,
         trakt_base_url: Some(server.url()),
         tmdb_base_url: None,
+        language: None,
     });
 
     let result = trakt.get_watching();
@@ -382,6 +392,7 @@ fn test_get_watching_with_oauth_token() {
         oauth_access_token: Some("my_oauth_token".to_string()),
         trakt_base_url: Some(server.url()),
         tmdb_base_url: None,
+        language: None,
     });
 
     let result = trakt.get_watching();
@@ -411,6 +422,7 @@ fn test_get_movie_rating_success() {
         oauth_access_token: None,
         trakt_base_url: Some(server.url()),
         tmdb_base_url: None,
+        language: None,
     });
 
     let rating = trakt.get_movie_rating("inception-2010".to_string());
@@ -437,6 +449,7 @@ fn test_get_movie_rating_cached() {
         oauth_access_token: None,
         trakt_base_url: Some(server.url()),
         tmdb_base_url: None,
+        language: None,
     });
 
     // First call - should hit API
@@ -464,6 +477,7 @@ fn test_get_movie_rating_handles_error() {
         oauth_access_token: None,
         trakt_base_url: Some(server.url()),
         tmdb_base_url: None,
+        language: None,
     });
 
     let rating = trakt.get_movie_rating("invalid-movie".to_string());
@@ -480,4 +494,308 @@ fn test_get_movie_rating_handles_error() {
 fn test_default_base_urls() {
     assert_eq!(DEFAULT_TRAKT_BASE_URL, "https://api.trakt.tv");
     assert_eq!(DEFAULT_TMDB_BASE_URL, "https://api.themoviedb.org");
+}
+
+// ============================================================================
+// Multilingual Title Tests
+// ============================================================================
+
+use discrakt::utils::MediaType;
+
+#[test]
+fn test_get_title_movie_success() {
+    let mut server = mockito::Server::new();
+
+    let mock = server
+        .mock("GET", "/3/movie/27205")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("api_key".into(), "test_tmdb_token".into()),
+            mockito::Matcher::UrlEncoded("language".into(), "en-US".into()),
+        ]))
+        .with_status(200)
+        .with_body(common::fixtures::TMDB_MOVIE_DETAILS)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: Some("en-US".to_string()),
+    });
+
+    let title = trakt.get_title(
+        MediaType::Movie,
+        "27205".to_string(),
+        "test_tmdb_token",
+        None,
+        None,
+    );
+
+    mock.assert();
+    assert_eq!(title, "Inception");
+}
+
+#[test]
+fn test_get_title_show_success() {
+    let mut server = mockito::Server::new();
+
+    let mock = server
+        .mock("GET", "/3/tv/1396")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("api_key".into(), "test_tmdb_token".into()),
+            mockito::Matcher::UrlEncoded("language".into(), "en-US".into()),
+        ]))
+        .with_status(200)
+        .with_body(common::fixtures::TMDB_SHOW_DETAILS)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: Some("en-US".to_string()),
+    });
+
+    let title = trakt.get_title(
+        MediaType::Show,
+        "1396".to_string(),
+        "test_tmdb_token",
+        None,
+        None,
+    );
+
+    mock.assert();
+    assert_eq!(title, "Breaking Bad");
+}
+
+#[test]
+fn test_get_title_episode_success() {
+    let mut server = mockito::Server::new();
+
+    let mock = server
+        .mock("GET", "/3/tv/1396/season/5/episode/16")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("api_key".into(), "test_tmdb_token".into()),
+            mockito::Matcher::UrlEncoded("language".into(), "en-US".into()),
+        ]))
+        .with_status(200)
+        .with_body(common::fixtures::TMDB_EPISODE_DETAILS)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: Some("en-US".to_string()),
+    });
+
+    let title = trakt.get_title(
+        MediaType::Show,
+        "1396".to_string(),
+        "test_tmdb_token",
+        Some(5),
+        Some(16),
+    );
+
+    mock.assert();
+    assert_eq!(title, "Felina");
+}
+
+#[test]
+fn test_get_title_cached() {
+    let mut server = mockito::Server::new();
+
+    // Only expect one call - second call should hit cache
+    let mock = server
+        .mock("GET", "/3/movie/27205")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("api_key".into(), "test_tmdb_token".into()),
+            mockito::Matcher::UrlEncoded("language".into(), "en-US".into()),
+        ]))
+        .with_status(200)
+        .with_body(common::fixtures::TMDB_MOVIE_DETAILS)
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: Some("en-US".to_string()),
+    });
+
+    // First call - should hit API
+    let title1 = trakt.get_title(
+        MediaType::Movie,
+        "27205".to_string(),
+        "test_tmdb_token",
+        None,
+        None,
+    );
+
+    // Second call - should hit cache
+    let title2 = trakt.get_title(
+        MediaType::Movie,
+        "27205".to_string(),
+        "test_tmdb_token",
+        None,
+        None,
+    );
+
+    mock.assert();
+    assert_eq!(title1, "Inception");
+    assert_eq!(title2, "Inception");
+}
+
+#[test]
+fn test_set_language_clears_cache() {
+    let mut server = mockito::Server::new();
+
+    // Expect two calls - cache should be cleared when language changes
+    let mock_en = server
+        .mock("GET", "/3/movie/27205")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "language".into(),
+            "en-US".into(),
+        ))
+        .with_status(200)
+        .with_body(common::fixtures::TMDB_MOVIE_DETAILS)
+        .expect(1)
+        .create();
+
+    let mock_fr = server
+        .mock("GET", "/3/movie/27205")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "language".into(),
+            "fr-FR".into(),
+        ))
+        .with_status(200)
+        .with_body(common::fixtures::TMDB_MOVIE_DETAILS_FR)
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: Some("en-US".to_string()),
+    });
+
+    // First call in English
+    let title_en = trakt.get_title(
+        MediaType::Movie,
+        "27205".to_string(),
+        "test_tmdb_token",
+        None,
+        None,
+    );
+    assert_eq!(title_en, "Inception");
+
+    // Change language
+    trakt.set_language("fr-FR".to_string());
+
+    // Second call in French - should hit API again due to cache clear
+    let title_fr = trakt.get_title(
+        MediaType::Movie,
+        "27205".to_string(),
+        "test_tmdb_token",
+        None,
+        None,
+    );
+
+    mock_en.assert();
+    mock_fr.assert();
+    // Both return "Inception" since French version has same title
+    assert_eq!(title_fr, "Inception");
+}
+
+#[test]
+fn test_get_title_handles_api_error() {
+    let mut server = mockito::Server::new();
+
+    let mock = server
+        .mock("GET", "/3/movie/99999")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("api_key".into(), "test_tmdb_token".into()),
+            mockito::Matcher::UrlEncoded("language".into(), "en-US".into()),
+        ]))
+        .with_status(404)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: Some("en-US".to_string()),
+    });
+
+    let title = trakt.get_title(
+        MediaType::Movie,
+        "99999".to_string(),
+        "test_tmdb_token",
+        None,
+        None,
+    );
+
+    mock.assert();
+    assert_eq!(title, "");
+}
+
+#[test]
+fn test_get_title_caches_empty_results() {
+    let mut server = mockito::Server::new();
+
+    // Only expect one call - empty result should be cached
+    let mock = server
+        .mock("GET", "/3/movie/99999")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("api_key".into(), "test_tmdb_token".into()),
+            mockito::Matcher::UrlEncoded("language".into(), "en-US".into()),
+        ]))
+        .with_status(404)
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: Some("en-US".to_string()),
+    });
+
+    // First call - should hit API and cache empty result
+    let title1 = trakt.get_title(
+        MediaType::Movie,
+        "99999".to_string(),
+        "test_tmdb_token",
+        None,
+        None,
+    );
+
+    // Second call - should hit cache
+    let title2 = trakt.get_title(
+        MediaType::Movie,
+        "99999".to_string(),
+        "test_tmdb_token",
+        None,
+        None,
+    );
+
+    mock.assert();
+    assert_eq!(title1, "");
+    assert_eq!(title2, "");
 }

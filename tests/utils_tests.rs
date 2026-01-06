@@ -9,7 +9,7 @@ use discrakt::utils::{
     create_dark_icon, get_watch_stats, poll_device_token, request_device_code, user_agent,
     DeviceTokenPollResult, MediaType, TraktAccessToken, TraktDeviceCode, DEFAULT_DISCORD_APP_ID,
     DEFAULT_DISCORD_APP_ID_MOVIE, DEFAULT_DISCORD_APP_ID_SHOW, DEFAULT_TMDB_TOKEN,
-    DEFAULT_TRAKT_CLIENT_ID,
+    DEFAULT_TRAKT_CLIENT_ID, LANGUAGES,
 };
 use image::RgbaImage;
 
@@ -393,4 +393,72 @@ fn test_create_dark_icon_preserves_alpha() {
 
     let pixel = dark.get_pixel(0, 0);
     assert_eq!(pixel[3], 0); // Alpha should remain 0
+}
+
+// ============================================================================
+// Language Constants Tests
+// ============================================================================
+
+#[test]
+fn test_languages_constant_not_empty() {
+    assert!(!LANGUAGES.is_empty());
+    // Should have at least English
+    assert!(LANGUAGES.len() >= 1);
+}
+
+#[test]
+fn test_languages_contains_english() {
+    let english = LANGUAGES.iter().find(|(_, code)| *code == "en-US");
+    assert!(english.is_some());
+    assert_eq!(english.unwrap().0, "English");
+}
+
+#[test]
+fn test_languages_format_valid() {
+    for (name, code) in LANGUAGES {
+        // Display name should not be empty
+        assert!(!name.is_empty(), "Display name should not be empty");
+
+        // Language code should follow xx-YY format
+        assert!(
+            code.contains('-'),
+            "Language code '{}' should contain a hyphen",
+            code
+        );
+
+        let parts: Vec<&str> = code.split('-').collect();
+        assert_eq!(
+            parts.len(),
+            2,
+            "Language code '{}' should have exactly 2 parts",
+            code
+        );
+
+        // First part should be lowercase (language code)
+        assert!(
+            parts[0].chars().all(|c| c.is_ascii_lowercase()),
+            "Language part of '{}' should be lowercase",
+            code
+        );
+
+        // Second part should be uppercase (country code)
+        assert!(
+            parts[1].chars().all(|c| c.is_ascii_uppercase()),
+            "Country part of '{}' should be uppercase",
+            code
+        );
+    }
+}
+
+#[test]
+fn test_languages_no_duplicates() {
+    let mut codes: Vec<&str> = LANGUAGES.iter().map(|(_, code)| *code).collect();
+    let original_len = codes.len();
+    codes.sort();
+    codes.dedup();
+    assert_eq!(
+        codes.len(),
+        original_len,
+        "LANGUAGES should not contain duplicate codes"
+    );
 }

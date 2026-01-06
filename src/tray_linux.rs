@@ -10,13 +10,14 @@ use std::sync::{Arc, RwLock};
 
 use crate::autostart;
 use crate::state::AppState;
-use crate::utils::{create_dark_icon, is_light_mode};
+use crate::utils::{create_dark_icon, is_light_mode, LANGUAGES};
 
 /// Commands that can be triggered from the tray menu.
 pub enum TrayCommand {
     Quit,
     TogglePause,
     ToggleAutostart,
+    SetLanguage(String),
 }
 
 /// Internal state shared between the tray icon and the main application.
@@ -24,6 +25,7 @@ struct TrayState {
     is_paused: bool,
     autostart_enabled: bool,
     status_text: String,
+    current_language: String,
     command_sender: Sender<TrayCommand>,
 }
 
@@ -101,9 +103,44 @@ impl ksni::Tray for DiscraktTray {
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
         let state = self.state.read().ok();
-        let (is_paused, autostart_enabled, status_text) = state
-            .map(|s| (s.is_paused, s.autostart_enabled, s.status_text.clone()))
-            .unwrap_or((false, false, "Starting...".into()));
+        let (is_paused, autostart_enabled, status_text, current_language) = state
+            .map(|s| {
+                (
+                    s.is_paused,
+                    s.autostart_enabled,
+                    s.status_text.clone(),
+                    s.current_language.clone(),
+                )
+            })
+            .unwrap_or((false, false, "Starting...".into(), "en-US".into()));
+
+        let mut lang_items = Vec::new();
+        for (name, code) in LANGUAGES {
+            let code_clone = code.to_string();
+            let is_checked = current_language == *code;
+            lang_items.push(
+                CheckmarkItem {
+                    label: name.to_string(),
+                    enabled: true,
+                    checked: is_checked,
+                    activate: Box::new(move |tray: &mut Self| {
+                        if let Ok(state) = tray.state.read() {
+                            let _ = state
+                                .command_sender
+                                .send(TrayCommand::SetLanguage(code_clone.clone()));
+                        }
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+            );
+        }
+
+        let lang_submenu = SubMenu {
+            label: "Language".into(),
+            submenu: lang_items,
+            ..Default::default()
+        };
 
         vec![
             // Status display (disabled item, just for showing info)
@@ -139,6 +176,7 @@ impl ksni::Tray for DiscraktTray {
                 ..Default::default()
             }
             .into(),
+            lang_submenu.into(),
             MenuItem::Separator,
             // Quit item
             StandardItem {
@@ -169,13 +207,17 @@ impl Tray {
     ///
     /// This spawns a background task to handle the D-Bus StatusNotifierItem protocol.
     /// The tray icon will appear in KDE Plasma and other compatible desktop environments.
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    ///
+    /// # Arguments
+    /// * `current_language` - The current language code for displaying in the tray menu
+    pub fn new(current_language: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let (command_sender, command_receiver) = crossbeam_channel::unbounded();
 
         let tray_state = Arc::new(RwLock::new(TrayState {
             is_paused: false,
             autostart_enabled: autostart::is_enabled(),
             status_text: "Starting...".into(),
+            current_language: current_language.to_string(),
             command_sender,
         }));
 
@@ -268,6 +310,18 @@ impl Tray {
                             self.handle.update(|_| {});
                         }
                     }
+                }
+                TrayCommand::SetLanguage(code) => {
+                    if let Ok(mut app_state) = state.write() {
+                        app_state.pending_language = Some(code.clone());
+                    }
+                    // Update tray state to show checkmark on new language
+                    if let Ok(mut tray_state) = self.tray_state.write() {
+                        tray_state.current_language = code.clone();
+                    }
+                    // Refresh the tray menu
+                    self.handle.update(|_| {});
+                    tracing::info!("Language changed to: {}", code);
                 }
             }
             return Some(command);

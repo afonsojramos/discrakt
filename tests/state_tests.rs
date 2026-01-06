@@ -92,6 +92,7 @@ fn test_status_text_paused() {
             details: "Details".to_string(),
             progress: "50%".to_string(),
         }),
+        pending_language: None,
     };
 
     // Paused takes priority over everything
@@ -108,6 +109,7 @@ fn test_status_text_disconnected() {
             details: "Details".to_string(),
             progress: "50%".to_string(),
         }),
+        pending_language: None,
     };
 
     // Disconnected takes priority over watching
@@ -120,6 +122,7 @@ fn test_status_text_nothing_playing() {
         is_paused: false,
         discord_connected: true,
         current_watching: None,
+        pending_language: None,
     };
 
     assert_eq!(state.status_text(), "Nothing playing");
