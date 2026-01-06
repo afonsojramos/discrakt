@@ -303,6 +303,13 @@ impl Trakt {
         }
     }
 
+    /// Sets the preferred language for TMDB title lookups.
+    ///
+    /// When the language changes, the title cache is cleared to ensure
+    /// fresh translations are fetched on next request.
+    ///
+    /// # Arguments
+    /// * `language` - TMDB language code (e.g., "en-US", "fr-FR")
     pub fn set_language(&mut self, language: String) {
         if self.language != language {
             tracing::info!("Changing Trakt client language to: {}", language);
@@ -311,11 +318,26 @@ impl Trakt {
         }
     }
 
+    /// Fetches a localized title from TMDB for the given media.
+    ///
+    /// Results are cached to minimize API calls. Returns an empty string
+    /// if no translation is available (which is also cached to avoid
+    /// repeated lookups for untranslated content).
+    ///
+    /// # Arguments
+    /// * `media_type` - Whether this is a Movie or Show
+    /// * `tmdb_id` - The TMDB ID for the media
+    /// * `tmdb_token` - API token for TMDB requests
+    /// * `season` - Season number (required for episode lookups)
+    /// * `episode` - Episode number (required for episode lookups)
+    ///
+    /// # Returns
+    /// The localized title, or empty string if unavailable
     pub fn get_title(
         &mut self,
         media_type: MediaType,
         tmdb_id: String,
-        tmdb_token: String,
+        tmdb_token: &str,
         season: Option<u8>,
         episode: Option<u8>,
     ) -> String {
@@ -380,11 +402,8 @@ impl Trakt {
             }
         };
 
-        if !title.is_empty() {
-            self.title_cache.insert(cache_key, title.clone());
-            title
-        } else {
-            String::new()
-        }
+        // Cache both successful and empty results to avoid repeated API calls
+        self.title_cache.insert(cache_key, title.clone());
+        title
     }
 }

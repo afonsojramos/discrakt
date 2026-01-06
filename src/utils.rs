@@ -63,11 +63,23 @@ pub const DEFAULT_TMDB_TOKEN: &str = "21b815a75fec5f1e707e3da1b9b2d7e3";
 
 /// Detects the system language and maps it to a supported TMDB language code.
 ///
+/// First attempts an exact match (e.g., "pt-BR" matches "pt-BR"), then falls
+/// back to prefix matching (e.g., "pt" matches "pt-PT"). This ensures users
+/// get their regional variant when available.
+///
 /// Falls back to "en-US" if the system language is not recognized or supported.
 fn detect_system_language() -> String {
     let system_lang = get_locale().unwrap_or_else(|| "en-US".to_string());
-    let prefix = system_lang.split(['-', '_']).next().unwrap_or("en");
+    // Normalize separator: convert underscore to hyphen for consistent matching
+    let normalized = system_lang.replace('_', "-");
 
+    // Try exact match first (e.g., "pt-BR" -> "pt-BR")
+    if let Some((_, code)) = LANGUAGES.iter().find(|(_, code)| *code == normalized) {
+        return code.to_string();
+    }
+
+    // Fall back to prefix match (e.g., "pt" -> "pt-PT")
+    let prefix = normalized.split('-').next().unwrap_or("en");
     LANGUAGES
         .iter()
         .find(|(_, code)| code.starts_with(prefix))
@@ -814,5 +826,7 @@ pub fn save_language_preference(language: &str) {
         if let Err(e) = config.write(&path) {
             tracing::error!("Failed to save language preference: {}", e);
         }
+    } else {
+        tracing::error!("Failed to save language preference: config file not found");
     }
 }

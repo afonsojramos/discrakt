@@ -204,7 +204,7 @@ impl Discord {
                 let translated = trakt.get_title(
                     MediaType::Movie,
                     tmdb_id.to_string(),
-                    tmdb_token.clone(),
+                    &tmdb_token,
                     None,
                     None,
                 );
@@ -217,7 +217,7 @@ impl Discord {
                 let show_title = trakt.get_title(
                     MediaType::Show,
                     tmdb_id.to_string(),
-                    tmdb_token.clone(),
+                    &tmdb_token,
                     None,
                     None,
                 );
@@ -229,7 +229,7 @@ impl Discord {
                     let ep_title = trakt.get_title(
                         MediaType::Show,
                         tmdb_id.to_string(),
-                        tmdb_token.clone(),
+                        &tmdb_token,
                         Some(episode.season),
                         Some(episode.number),
                     );
