@@ -146,3 +146,40 @@ OAuthAccessToken = test_access_token
 OAuthRefreshToken = test_refresh_token
 OAuthRefreshTokenExpiresAt = 9999999999
 "#;
+
+/// TMDB API: Movie details response (for title localization)
+pub const TMDB_MOVIE_DETAILS: &str = r#"{
+    "id": 27205,
+    "title": "Inception",
+    "original_title": "Inception",
+    "overview": "A thief who steals corporate secrets through use of dream-sharing technology...",
+    "release_date": "2010-07-16"
+}"#;
+
+/// TMDB API: Movie details response in French
+pub const TMDB_MOVIE_DETAILS_FR: &str = r#"{
+    "id": 27205,
+    "title": "Inception",
+    "original_title": "Inception",
+    "overview": "Dom Cobb est un voleur expérimenté...",
+    "release_date": "2010-07-21"
+}"#;
+
+/// TMDB API: TV show details response
+pub const TMDB_SHOW_DETAILS: &str = r#"{
+    "id": 1396,
+    "name": "Breaking Bad",
+    "original_name": "Breaking Bad",
+    "overview": "A high school chemistry teacher diagnosed with inoperable lung cancer...",
+    "first_air_date": "2008-01-20"
+}"#;
+
+/// TMDB API: TV episode details response
+pub const TMDB_EPISODE_DETAILS: &str = r#"{
+    "id": 62161,
+    "name": "Felina",
+    "overview": "All bad things must come to an end.",
+    "air_date": "2013-09-29",
+    "season_number": 5,
+    "episode_number": 16
+}"#;

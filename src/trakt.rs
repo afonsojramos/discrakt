@@ -341,10 +341,11 @@ impl Trakt {
         season: Option<u8>,
         episode: Option<u8>,
     ) -> String {
+        // Include language in cache key to ensure correct translations when language changes
         let cache_key = if let (Some(s), Some(e)) = (season, episode) {
-            format!("{tmdb_id}_S{s}E{e}")
+            format!("{}_{tmdb_id}_S{s}E{e}", self.language)
         } else {
-            tmdb_id.clone()
+            format!("{}_{tmdb_id}", self.language)
         };
 
         if let Some(title) = self.title_cache.get(&cache_key) {

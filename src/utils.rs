@@ -79,16 +79,37 @@ fn detect_system_language() -> String {
     }
 
     // Fall back to prefix match (e.g., "pt" -> "pt-PT")
+    // Use precise prefix matching to avoid false positives (e.g., "e" matching "el-GR")
     let prefix = normalized.split('-').next().unwrap_or("en");
     LANGUAGES
         .iter()
-        .find(|(_, code)| code.starts_with(prefix))
+        .find(|(_, code)| code.split('-').next() == Some(prefix))
         .map(|(_, code)| code.to_string())
         .unwrap_or_else(|| "en-US".to_string())
 }
 
-/// Supported languages for the tray menu.
-/// Each entry is a tuple of (display name, TMDB language code).
+/// Supported languages for the tray menu and TMDB title localization.
+///
+/// Each entry is a tuple of `(display_name, tmdb_language_code)`:
+/// - `display_name`: Human-readable name shown in the tray menu (in native language)
+/// - `tmdb_language_code`: TMDB API language code in the format `xx-YY` (ISO 639-1 + ISO 3166-1)
+///
+/// # Adding New Languages
+///
+/// To add a new language:
+/// 1. Find the TMDB language code from <https://developer.themoviedb.org/docs/languages>
+/// 2. Add a tuple with the native language name and TMDB code
+/// 3. Language codes must follow the `xx-YY` format (e.g., "pt-BR", "zh-CN")
+///
+/// # Examples
+///
+/// ```
+/// use discrakt::utils::LANGUAGES;
+///
+/// // Find English display name and code
+/// let english = LANGUAGES.iter().find(|(_, code)| *code == "en-US");
+/// assert_eq!(english, Some(&("English", "en-US")));
+/// ```
 pub const LANGUAGES: &[(&str, &str)] = &[
     ("English", "en-US"),
     ("Français", "fr-FR"),
@@ -821,7 +842,9 @@ pub fn create_dark_icon(image: &image::RgbaImage) -> image::RgbaImage {
 pub fn save_language_preference(language: &str) {
     if let Some(path) = find_config_file() {
         let mut config = Ini::new_cs();
-        let _ = config.load(&path);
+        if let Err(e) = config.load(&path) {
+            tracing::debug!("Could not load existing config (creating new): {}", e);
+        }
         config.setstr("Trakt API", "language", Some(language));
         if let Err(e) = config.write(&path) {
             tracing::error!("Failed to save language preference: {}", e);

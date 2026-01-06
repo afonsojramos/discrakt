@@ -25,6 +25,7 @@ struct TrayState {
     is_paused: bool,
     autostart_enabled: bool,
     status_text: String,
+    current_language: String,
     command_sender: Sender<TrayCommand>,
 }
 
@@ -102,16 +103,26 @@ impl ksni::Tray for DiscraktTray {
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
         let state = self.state.read().ok();
-        let (is_paused, autostart_enabled, status_text) = state
-            .map(|s| (s.is_paused, s.autostart_enabled, s.status_text.clone()))
-            .unwrap_or((false, false, "Starting...".into()));
+        let (is_paused, autostart_enabled, status_text, current_language) = state
+            .map(|s| {
+                (
+                    s.is_paused,
+                    s.autostart_enabled,
+                    s.status_text.clone(),
+                    s.current_language.clone(),
+                )
+            })
+            .unwrap_or((false, false, "Starting...".into(), "en-US".into()));
 
         let mut lang_items = Vec::new();
         for (name, code) in LANGUAGES {
             let code_clone = code.to_string();
+            let is_checked = current_language == *code;
             lang_items.push(
-                StandardItem {
+                CheckmarkItem {
                     label: name.to_string(),
+                    enabled: true,
+                    checked: is_checked,
                     activate: Box::new(move |tray: &mut Self| {
                         if let Ok(state) = tray.state.read() {
                             let _ = state
@@ -198,14 +209,15 @@ impl Tray {
     /// The tray icon will appear in KDE Plasma and other compatible desktop environments.
     ///
     /// # Arguments
-    /// * `_current_language` - The current language code (unused on Linux, kept for API consistency)
-    pub fn new(_current_language: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    /// * `current_language` - The current language code for displaying in the tray menu
+    pub fn new(current_language: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let (command_sender, command_receiver) = crossbeam_channel::unbounded();
 
         let tray_state = Arc::new(RwLock::new(TrayState {
             is_paused: false,
             autostart_enabled: autostart::is_enabled(),
             status_text: "Starting...".into(),
+            current_language: current_language.to_string(),
             command_sender,
         }));
 
@@ -303,6 +315,12 @@ impl Tray {
                     if let Ok(mut app_state) = state.write() {
                         app_state.pending_language = Some(code.clone());
                     }
+                    // Update tray state to show checkmark on new language
+                    if let Ok(mut tray_state) = self.tray_state.write() {
+                        tray_state.current_language = code.clone();
+                    }
+                    // Refresh the tray menu
+                    self.handle.update(|_| {});
                     tracing::info!("Language changed to: {}", code);
                 }
             }
