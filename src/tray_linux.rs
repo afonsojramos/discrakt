@@ -138,7 +138,7 @@ impl ksni::Tray for DiscraktTray {
 
         let lang_submenu = SubMenu {
             label: "Language".into(),
-            children: lang_items,
+            submenu: lang_items,
             ..Default::default()
         };
 
