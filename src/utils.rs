@@ -347,7 +347,10 @@ impl Env {
             "Device code obtained"
         );
 
-        let auto_url = format!("{}?code={}", device_code.verification_url, device_code.user_code);
+        let auto_url = format!(
+            "{}?code={}",
+            device_code.verification_url, device_code.user_code
+        );
 
         // Step 2: Display code to user and open browser
         // Note: In Windows release builds, the console is hidden, so this output
