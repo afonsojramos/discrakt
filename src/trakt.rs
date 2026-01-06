@@ -119,7 +119,8 @@ impl Trakt {
             .build();
 
         // SAFETY: MAX_CACHE_SIZE is a non-zero constant
-        let cache_size = NonZeroUsize::new(MAX_CACHE_SIZE).unwrap();
+        let cache_size =
+            NonZeroUsize::new(MAX_CACHE_SIZE).expect("MAX_CACHE_SIZE must be non-zero");
 
         Trakt {
             rating_cache: LruCache::new(cache_size),
