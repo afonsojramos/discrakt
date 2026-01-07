@@ -7,6 +7,34 @@ use ureq::Agent;
 use crate::retry::{execute_with_retry, RetryConfig, RetryError};
 use crate::utils::{user_agent, MediaType};
 
+/// Sanitizes a URL by removing sensitive query parameters (e.g., `api_key`).
+/// This prevents credential leaks in log messages.
+fn sanitize_url_for_logging(url: &str) -> String {
+    // Find the query string start
+    if let Some(query_start) = url.find('?') {
+        let base = &url[..query_start];
+        let query = &url[query_start + 1..];
+
+        // Filter out sensitive parameters
+        let sanitized_params: Vec<&str> = query
+            .split('&')
+            .filter(|param| {
+                !param.starts_with("api_key=")
+                    && !param.starts_with("access_token=")
+                    && !param.starts_with("token=")
+            })
+            .collect();
+
+        if sanitized_params.is_empty() {
+            format!("{}?[REDACTED]", base)
+        } else {
+            format!("{}?{}&[REDACTED]", base, sanitized_params.join("&"))
+        }
+    } else {
+        url.to_string()
+    }
+}
+
 /// Maximum number of entries to store in each cache.
 ///
 /// This prevents unbounded memory growth for long-running instances.
@@ -234,10 +262,14 @@ impl Trakt {
                 // This is expected API behavior, not an error condition.
                 None
             }
-            Err(RetryError::MaxRetriesExceeded(attempts)) => {
+            Err(RetryError::MaxRetriesExceeded {
+                attempts,
+                last_error,
+            }) => {
                 tracing::error!(
                     endpoint = %endpoint,
                     attempts = attempts,
+                    last_error = %last_error,
                     "Failed to fetch watching status after retries"
                 );
                 None
@@ -346,21 +378,27 @@ impl Trakt {
             }
             Err(RetryError::NonRetryableError(401)) => {
                 tracing::error!(
-                    endpoint = %endpoint,
+                    endpoint = %sanitize_url_for_logging(&endpoint),
                     "TMDB API key expired or invalid"
                 );
                 None
             }
-            Err(RetryError::MaxRetriesExceeded(attempts)) => {
+            Err(RetryError::MaxRetriesExceeded {
+                attempts,
+                last_error,
+            }) => {
                 tracing::error!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
                     media_type = %media_type.as_str(),
                     attempts = attempts,
+                    last_error = %last_error,
                     "Failed to fetch poster after retries"
                 );
                 None
             }
             Err(RetryError::NetworkError(msg)) => {
                 tracing::error!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
                     media_type = %media_type.as_str(),
                     error = %msg,
                     "Network error fetching image"
@@ -369,6 +407,7 @@ impl Trakt {
             }
             Err(RetryError::ParseError(msg)) => {
                 tracing::error!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
                     media_type = %media_type.as_str(),
                     error = %msg,
                     "Failed to parse image response"
@@ -377,6 +416,7 @@ impl Trakt {
             }
             Err(RetryError::NonRetryableError(code)) => {
                 tracing::error!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
                     media_type = %media_type.as_str(),
                     status = code,
                     "Unexpected HTTP error from TMDB API"
@@ -431,10 +471,14 @@ impl Trakt {
                 self.handle_auth_error(code, &endpoint);
                 0.0
             }
-            Err(RetryError::MaxRetriesExceeded(attempts)) => {
+            Err(RetryError::MaxRetriesExceeded {
+                attempts,
+                last_error,
+            }) => {
                 tracing::error!(
                     endpoint = %endpoint,
                     attempts = attempts,
+                    last_error = %last_error,
                     "Failed to fetch movie rating after retries"
                 );
                 0.0
@@ -478,7 +522,7 @@ impl Trakt {
     ///     max_retries: 2,
     ///     base_delay: Duration::from_millis(10),
     ///     max_delay: Duration::from_millis(100),
-    ///     jitter_factor: 0.0,
+    ///     enable_jitter: false,
     /// });
     /// ```
     pub fn set_retry_config(&mut self, config: RetryConfig) {
@@ -577,24 +621,30 @@ impl Trakt {
             }
             Err(RetryError::NonRetryableError(401)) => {
                 tracing::debug!(
-                    endpoint = %endpoint,
+                    endpoint = %sanitize_url_for_logging(&endpoint),
                     media_type = %media_type.as_str(),
                     tmdb_id = %tmdb_id,
                     "TMDB API key expired or invalid"
                 );
                 String::new()
             }
-            Err(RetryError::MaxRetriesExceeded(attempts)) => {
+            Err(RetryError::MaxRetriesExceeded {
+                attempts,
+                last_error,
+            }) => {
                 tracing::debug!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
                     media_type = %media_type.as_str(),
                     tmdb_id = %tmdb_id,
                     attempts = attempts,
+                    last_error = %last_error,
                     "Failed to fetch localized title after retries"
                 );
                 String::new()
             }
             Err(RetryError::NetworkError(msg)) => {
                 tracing::debug!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
                     error = %msg,
                     media_type = %media_type.as_str(),
                     tmdb_id = %tmdb_id,
@@ -604,6 +654,7 @@ impl Trakt {
             }
             Err(RetryError::ParseError(msg)) => {
                 tracing::debug!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
                     error = %msg,
                     media_type = %media_type.as_str(),
                     tmdb_id = %tmdb_id,
@@ -613,6 +664,7 @@ impl Trakt {
             }
             Err(RetryError::NonRetryableError(code)) => {
                 tracing::debug!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
                     media_type = %media_type.as_str(),
                     tmdb_id = %tmdb_id,
                     status = code,

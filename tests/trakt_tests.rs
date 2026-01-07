@@ -1012,7 +1012,7 @@ fn fast_retry_config() -> RetryConfig {
         max_retries: 3,
         base_delay: Duration::from_millis(10),
         max_delay: Duration::from_millis(100),
-        jitter_factor: 0.0, // No jitter for predictable timing
+        enable_jitter: false, // No jitter for predictable timing
     }
 }
 
@@ -1325,6 +1325,86 @@ fn test_retry_does_not_retry_on_4xx_client_errors() {
 
     // Should return 0.0 immediately without retrying
     assert_eq!(rating, 0.0);
+}
+
+#[test]
+fn test_retry_returns_parse_error_on_malformed_json_after_retries() {
+    // Test that when retries succeed (HTTP 200) but the response contains
+    // malformed JSON, a ParseError is returned instead of silently failing.
+    let mut server = mockito::Server::new();
+
+    // First call returns 503, second call succeeds with malformed JSON
+    let mock_503 = server
+        .mock("GET", "/movies/malformed-movie/ratings")
+        .with_status(503)
+        .expect(1)
+        .create();
+
+    let mock_success_malformed = server
+        .mock("GET", "/movies/malformed-movie/ratings")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"rating": "not_a_number", "invalid_json"#) // Malformed JSON
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+    trakt.set_retry_config(fast_retry_config());
+
+    // Should return 0.0 after parse error (graceful degradation)
+    let rating = trakt.get_movie_rating("malformed-movie".to_string());
+
+    mock_503.assert();
+    mock_success_malformed.assert();
+
+    // The response failed to parse, so we get the default value
+    assert_eq!(rating, 0.0);
+}
+
+#[test]
+fn test_retry_on_408_request_timeout() {
+    // Test that HTTP 408 Request Timeout is correctly retried
+    let mut server = mockito::Server::new();
+
+    // First call returns 408 (Request Timeout), second call succeeds
+    let mock_408 = server
+        .mock("GET", "/movies/timeout-movie/ratings")
+        .with_status(408)
+        .expect(1)
+        .create();
+
+    let mock_success = server
+        .mock("GET", "/movies/timeout-movie/ratings")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(common::fixtures::TRAKT_MOVIE_RATINGS)
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+    trakt.set_retry_config(fast_retry_config());
+
+    let rating = trakt.get_movie_rating("timeout-movie".to_string());
+
+    mock_408.assert();
+    mock_success.assert();
+
+    // Should return the rating after successful retry
+    assert!((rating - 8.45123).abs() < 0.0001);
 }
 
 #[test]
