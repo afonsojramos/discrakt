@@ -50,17 +50,6 @@ impl Default for RetryConfig {
     }
 }
 
-/// Decision returned by retry logic.
-///
-/// Indicates whether to retry the operation and how long to wait.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RetryDecision {
-    /// Retry after the specified delay.
-    Retry(Duration),
-    /// Do not retry; the error is non-recoverable or retries exhausted.
-    NoRetry,
-}
-
 /// Errors that can occur during retry execution.
 #[derive(Error, Debug)]
 pub enum RetryError {
@@ -112,7 +101,7 @@ pub fn calculate_delay_with_jitter(attempt: u32, config: &RetryConfig) -> Durati
     // Using a simple deterministic approach based on attempt number for reproducibility
     // in tests, but with enough variation in practice due to timing.
     let jitter_range = config.jitter_factor * 2.0;
-    let jitter_offset = pseudo_random_factor(attempt) * jitter_range - config.jitter_factor;
+    let jitter_offset = pseudo_random_factor() * jitter_range - config.jitter_factor;
     let jitter_multiplier = 1.0 + jitter_offset;
 
     // Apply jitter and ensure non-negative result
@@ -126,7 +115,7 @@ pub fn calculate_delay_with_jitter(attempt: u32, config: &RetryConfig) -> Durati
 /// This uses system time nanoseconds for randomness without requiring
 /// an external random number generator dependency. While not cryptographically
 /// secure, it provides sufficient variation for retry jitter purposes.
-fn pseudo_random_factor(_attempt: u32) -> f64 {
+fn pseudo_random_factor() -> f64 {
     // Use system time nanoseconds for cheap pseudo-randomness
     // The nanosecond component varies enough between calls to provide jitter
     let nanos = std::time::SystemTime::now()
@@ -144,6 +133,13 @@ fn pseudo_random_factor(_attempt: u32) -> f64 {
 /// - A number of seconds to wait (this function handles this case)
 /// - An HTTP-date (not handled by this function)
 ///
+/// # Note
+///
+/// This function is currently not used in `execute_with_retry` because
+/// `ureq::Error::StatusCode` doesn't provide access to response headers.
+/// It's kept for potential future use when we might intercept responses
+/// before they become errors, or if ureq's API changes.
+///
 /// # Arguments
 ///
 /// * `value` - The raw header value string.
@@ -151,13 +147,7 @@ fn pseudo_random_factor(_attempt: u32) -> f64 {
 /// # Returns
 ///
 /// The parsed duration, or `None` if the value cannot be parsed as seconds.
-///
-/// # Example
-///
-/// ```ignore
-/// assert_eq!(parse_retry_after_header("120"), Some(Duration::from_secs(120)));
-/// assert_eq!(parse_retry_after_header("invalid"), None);
-/// ```
+#[allow(dead_code)]
 pub fn parse_retry_after_header(value: &str) -> Option<Duration> {
     value.trim().parse::<u64>().ok().map(Duration::from_secs)
 }
@@ -191,7 +181,6 @@ pub fn should_retry_status_code(status: u16) -> bool {
 /// This function wraps a request-producing closure and handles:
 /// - Automatic retries for rate limiting (HTTP 429) and server errors (5xx)
 /// - Exponential backoff with jitter between attempts
-/// - Respect for `Retry-After` headers when present
 /// - JSON deserialization of successful responses
 ///
 /// # Type Parameters
@@ -410,23 +399,6 @@ mod tests {
             assert!(delay.as_millis() >= 700);
             assert!(delay.as_millis() <= 1300);
         }
-    }
-
-    #[test]
-    fn test_retry_decision_equality() {
-        assert_eq!(RetryDecision::NoRetry, RetryDecision::NoRetry);
-        assert_eq!(
-            RetryDecision::Retry(Duration::from_secs(5)),
-            RetryDecision::Retry(Duration::from_secs(5))
-        );
-        assert_ne!(
-            RetryDecision::Retry(Duration::from_secs(5)),
-            RetryDecision::Retry(Duration::from_secs(10))
-        );
-        assert_ne!(
-            RetryDecision::Retry(Duration::from_secs(5)),
-            RetryDecision::NoRetry
-        );
     }
 
     #[test]

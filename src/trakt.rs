@@ -229,8 +229,9 @@ impl Trakt {
                 None
             }
             Err(RetryError::NonRetryableError(204)) => {
-                // HTTP 204 No Content - user is not watching anything
-                // This is expected behavior, not an error
+                // HTTP 204 No Content - user is not watching anything.
+                // Trakt returns 204 (not 200 with empty body) when nothing is playing.
+                // This is expected API behavior, not an error condition.
                 None
             }
             Err(RetryError::MaxRetriesExceeded(attempts)) => {
@@ -315,7 +316,7 @@ impl Trakt {
             Ok(body) => {
                 // Extract poster URL from TMDB response
                 let posters = body["posters"].as_array();
-                if posters.is_none() || posters.is_some_and(|p| p.is_empty()) {
+                if posters.is_none_or(|p| p.is_empty()) {
                     tracing::warn!(
                         media_type = %media_type.as_str(),
                         "Image not found in TMDB response"
