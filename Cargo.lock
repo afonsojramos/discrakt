@@ -792,6 +792,7 @@ dependencies = [
  "serial_test",
  "sys-locale",
  "tempfile",
+ "thiserror 2.0.17",
  "tiny_http",
  "tracing",
  "tracing-appender",
