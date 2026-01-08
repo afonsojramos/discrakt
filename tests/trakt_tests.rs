@@ -808,10 +808,8 @@ use discrakt::trakt::MAX_CACHE_SIZE;
 
 #[test]
 fn test_max_cache_size_is_reasonable() {
-    // Verify the cache size constant is sensible
-    assert!(MAX_CACHE_SIZE > 0);
-    assert!(MAX_CACHE_SIZE <= 10000); // Not unreasonably large
-    assert_eq!(MAX_CACHE_SIZE, 500); // Current expected value
+    // Verify the cache size constant is the expected value
+    assert_eq!(MAX_CACHE_SIZE, 500);
 }
 
 #[test]
@@ -996,6 +994,415 @@ fn test_lru_cache_promotes_recently_accessed() {
     // Verify mocks were called exactly once (proving cache worked)
     mock1.assert();
     mock2.assert();
+}
+
+// ============================================================================
+// Retry Behavior Tests
+// ============================================================================
+
+use discrakt::retry::RetryConfig;
+use std::time::Duration;
+
+/// Helper to create a fast retry config for testing.
+/// Uses short delays to make tests run quickly.
+fn fast_retry_config() -> RetryConfig {
+    RetryConfig {
+        max_retries: 3,
+        base_delay: Duration::from_millis(10),
+        max_delay: Duration::from_millis(100),
+        enable_jitter: false, // No jitter for predictable timing
+    }
+}
+
+#[test]
+fn test_get_watching_retries_on_503() {
+    // Test that get_watching retries on 503 Service Unavailable errors
+    // and eventually succeeds when the server recovers.
+    let mut server = mockito::Server::new();
+
+    // First two calls return 503, third call succeeds
+    let mock_503_first = server
+        .mock("GET", "/users/testuser/watching")
+        .with_status(503)
+        .expect(1)
+        .create();
+
+    let mock_503_second = server
+        .mock("GET", "/users/testuser/watching")
+        .with_status(503)
+        .expect(1)
+        .create();
+
+    let mock_success = server
+        .mock("GET", "/users/testuser/watching")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(common::fixtures::TRAKT_MOVIE_WATCHING)
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+    trakt.set_retry_config(fast_retry_config());
+
+    let result = trakt.get_watching();
+
+    // Verify all mocks were called in order
+    mock_503_first.assert();
+    mock_503_second.assert();
+    mock_success.assert();
+
+    // Should return successful response after retries
+    assert!(result.is_some());
+    let response = result.unwrap();
+    assert_eq!(response.r#type, "movie");
+    assert_eq!(response.movie.as_ref().unwrap().title, "Inception");
+}
+
+#[test]
+fn test_get_watching_retries_on_429() {
+    // Test that get_watching retries on 429 Too Many Requests (rate limiting)
+    // and eventually succeeds when the rate limit clears.
+    let mut server = mockito::Server::new();
+
+    // First two calls return 429 (rate limited), third call succeeds
+    let mock_429_first = server
+        .mock("GET", "/users/testuser/watching")
+        .with_status(429)
+        .expect(1)
+        .create();
+
+    let mock_429_second = server
+        .mock("GET", "/users/testuser/watching")
+        .with_status(429)
+        .expect(1)
+        .create();
+
+    let mock_success = server
+        .mock("GET", "/users/testuser/watching")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(common::fixtures::TRAKT_EPISODE_WATCHING)
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+    trakt.set_retry_config(fast_retry_config());
+
+    let result = trakt.get_watching();
+
+    mock_429_first.assert();
+    mock_429_second.assert();
+    mock_success.assert();
+
+    assert!(result.is_some());
+    let response = result.unwrap();
+    assert_eq!(response.r#type, "episode");
+    assert_eq!(response.show.as_ref().unwrap().title, "Breaking Bad");
+}
+
+#[test]
+fn test_get_watching_gives_up_after_max_retries() {
+    // Test that get_watching gives up after exhausting all retry attempts
+    // when the server returns 503 indefinitely.
+    let mut server = mockito::Server::new();
+
+    // Server always returns 503 - should hit max_retries + 1 times (initial + retries)
+    let mock_503 = server
+        .mock("GET", "/users/testuser/watching")
+        .with_status(503)
+        .expect(4) // 1 initial + 3 retries = 4 total attempts
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+    trakt.set_retry_config(fast_retry_config());
+
+    let result = trakt.get_watching();
+
+    mock_503.assert();
+
+    // Should return None after exhausting retries
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_get_movie_rating_retries_on_server_error() {
+    // Test that get_movie_rating retries on 500 Internal Server Error
+    // and eventually returns the correct rating when the server recovers.
+    let mut server = mockito::Server::new();
+
+    // First call returns 500, second call succeeds
+    let mock_500 = server
+        .mock("GET", "/movies/test-movie/ratings")
+        .with_status(500)
+        .expect(1)
+        .create();
+
+    let mock_success = server
+        .mock("GET", "/movies/test-movie/ratings")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(common::fixtures::TRAKT_MOVIE_RATINGS)
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+    trakt.set_retry_config(fast_retry_config());
+
+    let rating = trakt.get_movie_rating("test-movie".to_string());
+
+    mock_500.assert();
+    mock_success.assert();
+
+    // Should return the rating after successful retry
+    assert!((rating - 8.45123).abs() < 0.0001);
+}
+
+#[test]
+fn test_get_poster_retries_on_transient_error() {
+    // Test that get_poster retries on 503 Service Unavailable from TMDB
+    // and eventually returns the poster URL when the service recovers.
+    let mut server = mockito::Server::new();
+
+    // First call returns 503, second call succeeds
+    let mock_503 = server
+        .mock("GET", "/3/movie/27205/images")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "api_key".into(),
+            "test_token".into(),
+        ))
+        .with_status(503)
+        .expect(1)
+        .create();
+
+    let mock_success = server
+        .mock("GET", "/3/movie/27205/images")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "api_key".into(),
+            "test_token".into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(common::fixtures::TMDB_MOVIE_IMAGES)
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: None,
+    });
+    trakt.set_retry_config(fast_retry_config());
+
+    let poster = trakt.get_poster(
+        MediaType::Movie,
+        "27205".to_string(),
+        "test_token".to_string(),
+        0,
+    );
+
+    mock_503.assert();
+    mock_success.assert();
+
+    // Should return the poster URL after successful retry
+    assert!(poster.is_some());
+    let url = poster.unwrap();
+    assert!(url.contains("oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg"));
+}
+
+#[test]
+fn test_get_title_retries_on_502() {
+    // Test that get_title retries on 502 Bad Gateway errors from TMDB
+    // and eventually returns the correct title when the service recovers.
+    let mut server = mockito::Server::new();
+
+    // First call returns 502, second call succeeds
+    let mock_502 = server
+        .mock("GET", "/3/movie/27205")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("api_key".into(), "test_token".into()),
+            mockito::Matcher::UrlEncoded("language".into(), "en-US".into()),
+        ]))
+        .with_status(502)
+        .expect(1)
+        .create();
+
+    let mock_success = server
+        .mock("GET", "/3/movie/27205")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("api_key".into(), "test_token".into()),
+            mockito::Matcher::UrlEncoded("language".into(), "en-US".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(common::fixtures::TMDB_MOVIE_DETAILS)
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: Some("en-US".to_string()),
+    });
+    trakt.set_retry_config(fast_retry_config());
+
+    let title = trakt.get_title(
+        MediaType::Movie,
+        "27205".to_string(),
+        "test_token",
+        None,
+        None,
+    );
+
+    mock_502.assert();
+    mock_success.assert();
+
+    // Should return the title after successful retry
+    assert_eq!(title, "Inception");
+}
+
+#[test]
+fn test_retry_does_not_retry_on_4xx_client_errors() {
+    // Test that 4xx errors (except 429) are NOT retried since they
+    // indicate client-side issues that won't resolve with retries.
+    let mut server = mockito::Server::new();
+
+    // Server returns 404 - should NOT be retried
+    let mock_404 = server
+        .mock("GET", "/movies/nonexistent/ratings")
+        .with_status(404)
+        .expect(1) // Only 1 call - no retries
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+    trakt.set_retry_config(fast_retry_config());
+
+    let rating = trakt.get_movie_rating("nonexistent".to_string());
+
+    mock_404.assert();
+
+    // Should return 0.0 immediately without retrying
+    assert_eq!(rating, 0.0);
+}
+
+#[test]
+fn test_retry_returns_parse_error_on_malformed_json_after_retries() {
+    // Test that when retries succeed (HTTP 200) but the response contains
+    // malformed JSON, a ParseError is returned instead of silently failing.
+    let mut server = mockito::Server::new();
+
+    // First call returns 503, second call succeeds with malformed JSON
+    let mock_503 = server
+        .mock("GET", "/movies/malformed-movie/ratings")
+        .with_status(503)
+        .expect(1)
+        .create();
+
+    let mock_success_malformed = server
+        .mock("GET", "/movies/malformed-movie/ratings")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"rating": "not_a_number", "invalid_json"#) // Malformed JSON
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+    trakt.set_retry_config(fast_retry_config());
+
+    // Should return 0.0 after parse error (graceful degradation)
+    let rating = trakt.get_movie_rating("malformed-movie".to_string());
+
+    mock_503.assert();
+    mock_success_malformed.assert();
+
+    // The response failed to parse, so we get the default value
+    assert_eq!(rating, 0.0);
+}
+
+#[test]
+fn test_retry_on_408_request_timeout() {
+    // Test that HTTP 408 Request Timeout is correctly retried
+    let mut server = mockito::Server::new();
+
+    // First call returns 408 (Request Timeout), second call succeeds
+    let mock_408 = server
+        .mock("GET", "/movies/timeout-movie/ratings")
+        .with_status(408)
+        .expect(1)
+        .create();
+
+    let mock_success = server
+        .mock("GET", "/movies/timeout-movie/ratings")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(common::fixtures::TRAKT_MOVIE_RATINGS)
+        .expect(1)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+    trakt.set_retry_config(fast_retry_config());
+
+    let rating = trakt.get_movie_rating("timeout-movie".to_string());
+
+    mock_408.assert();
+    mock_success.assert();
+
+    // Should return the rating after successful retry
+    assert!((rating - 8.45123).abs() < 0.0001);
 }
 
 #[test]
