@@ -1,5 +1,6 @@
 use chrono::{DateTime, FixedOffset, SecondsFormat, Utc};
 use configparser::ini::Ini;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use serde_json::json;
 use std::{env, path::PathBuf, sync::OnceLock, thread, time::Duration};
@@ -347,10 +348,8 @@ impl Env {
             "Device code obtained"
         );
 
-        let auto_url = format!(
-            "{}?code={}",
-            device_code.verification_url, device_code.user_code
-        );
+        let encoded_code = utf8_percent_encode(&device_code.user_code, NON_ALPHANUMERIC);
+        let auto_url = format!("{}?code={}", device_code.verification_url, encoded_code);
 
         // Step 2: Display code to user and open browser
         // Note: In Windows release builds, the console is hidden, so this output

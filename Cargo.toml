@@ -29,6 +29,7 @@ tracing-appender = "0.2"
 tiny_http = "0.12"
 sys-locale = "0.3"
 lru = "0.13"
+percent-encoding = "2.3"
 
 # Platform-specific tray dependencies:
 # - Linux: ksni for native KDE/freedesktop StatusNotifierItem support

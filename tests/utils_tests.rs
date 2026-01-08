@@ -402,8 +402,6 @@ fn test_create_dark_icon_preserves_alpha() {
 #[test]
 fn test_languages_constant_not_empty() {
     assert!(!LANGUAGES.is_empty());
-    // Should have at least English
-    assert!(LANGUAGES.len() >= 1);
 }
 
 #[test]
