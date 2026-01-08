@@ -1,5 +1,6 @@
 pub mod autostart;
 pub mod discord;
+pub mod retry;
 pub mod setup;
 pub mod state;
 pub mod trakt;

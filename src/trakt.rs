@@ -4,7 +4,39 @@ use serde_json::Value;
 use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 use ureq::Agent;
 
+use crate::retry::{execute_with_retry, RetryConfig, RetryError};
 use crate::utils::{user_agent, MediaType};
+
+/// Sanitizes a URL by removing sensitive query parameters (e.g., `api_key`).
+/// This prevents credential leaks in log messages.
+fn sanitize_url_for_logging(url: &str) -> String {
+    // Find the query string start
+    if let Some(query_start) = url.find('?') {
+        let base = &url[..query_start];
+        let query = &url[query_start + 1..];
+
+        // Filter out sensitive parameters
+        let sanitized_params: Vec<&str> = query
+            .split('&')
+            .filter(|param| {
+                !param.starts_with("api_key=")
+                    && !param.starts_with("access_token=")
+                    && !param.starts_with("token=")
+            })
+            .collect();
+
+        // Use consistent formatting - show non-sensitive params or just [REDACTED]
+        let sanitized_query = if sanitized_params.is_empty() {
+            "[REDACTED]".to_string()
+        } else {
+            sanitized_params.join("&")
+        };
+
+        format!("{}?{}", base, sanitized_query)
+    } else {
+        url.to_string()
+    }
+}
 
 /// Maximum number of entries to store in each cache.
 ///
@@ -96,6 +128,8 @@ pub struct Trakt {
     trakt_base_url: String,
     tmdb_base_url: String,
     language: String,
+    /// Configuration for retry behavior on transient network failures.
+    retry_config: RetryConfig,
 }
 
 impl Trakt {
@@ -137,6 +171,7 @@ impl Trakt {
                 .tmdb_base_url
                 .unwrap_or_else(|| DEFAULT_TMDB_BASE_URL.to_string()),
             language: config.language.unwrap_or_else(|| "en-US".to_string()),
+            retry_config: RetryConfig::default(),
         }
     }
 
@@ -168,39 +203,122 @@ impl Trakt {
         }
     }
 
+    /// Fetches the current watching status from Trakt.tv.
+    ///
+    /// This method uses retry logic with exponential backoff for transient
+    /// network failures and rate limiting. Auth errors (401, 403) are not
+    /// retried and are logged appropriately.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(TraktWatchingResponse)` if the user is currently watching something
+    /// - `None` if not watching anything, or if an error occurred
     pub fn get_watching(&self) -> Option<TraktWatchingResponse> {
         let endpoint = format!("{}/users/{}/watching", self.trakt_base_url, self.username);
 
-        let mut request = self
-            .agent
-            .get(&endpoint)
-            .header("Content-Type", "application/json")
-            .header("trakt-api-version", "2")
-            .header("trakt-api-key", &self.client_id);
+        // Build authorization header outside closure to avoid lifetime issues.
+        // In Rust, closures capture variables by reference by default, but the
+        // `execute_with_retry` function requires `Fn()` which means the closure
+        // may be called multiple times. We need owned data or references that
+        // outlive the closure.
+        let authorization = self.oauth_access_token.as_ref().and_then(|token| {
+            if token.is_empty() {
+                None
+            } else {
+                Some(format!("Bearer {}", token))
+            }
+        });
 
-        // add Authorization header if there is a (valid) OAuth access token
-        if let Some(token) = &self.oauth_access_token {
-            if !token.is_empty() {
-                let authorization = format!("Bearer {}", token);
-                request = request.header("Authorization", &authorization);
+        // Clone values needed inside the closure to avoid borrowing `self`
+        // multiple times. The closure captures these by value (via `move` semantics
+        // inferred from the Clone).
+        let agent = &self.agent;
+        let client_id = &self.client_id;
+
+        let result: Result<Option<TraktWatchingResponse>, RetryError> = execute_with_retry(
+            || {
+                let mut request = agent
+                    .get(&endpoint)
+                    .header("Content-Type", "application/json")
+                    .header("trakt-api-version", "2")
+                    .header("trakt-api-key", client_id);
+
+                if let Some(auth) = &authorization {
+                    request = request.header("Authorization", auth);
+                }
+
+                request.call()
+            },
+            &self.retry_config,
+        );
+
+        match result {
+            // The API returns `null` (parsed as `None`) when not watching anything
+            Ok(response) => response,
+            Err(RetryError::NonRetryableError(code @ (401 | 403))) => {
+                self.handle_auth_error(code, &endpoint);
+                None
+            }
+            Err(RetryError::NonRetryableError(204)) => {
+                // HTTP 204 No Content - user is not watching anything.
+                // Trakt returns 204 (not 200 with empty body) when nothing is playing.
+                // This is expected API behavior, not an error condition.
+                None
+            }
+            Err(RetryError::MaxRetriesExceeded {
+                attempts,
+                last_error,
+            }) => {
+                tracing::error!(
+                    endpoint = %endpoint,
+                    attempts = attempts,
+                    last_error = %last_error,
+                    "Failed to fetch watching status after retries"
+                );
+                None
+            }
+            Err(RetryError::NetworkError(msg)) => {
+                tracing::error!(
+                    endpoint = %endpoint,
+                    error = %msg,
+                    "Network error calling Trakt API"
+                );
+                None
+            }
+            Err(RetryError::ParseError(msg)) => {
+                tracing::debug!(
+                    endpoint = %endpoint,
+                    error = %msg,
+                    "Failed to parse watching response (may be empty)"
+                );
+                None
+            }
+            Err(RetryError::NonRetryableError(code)) => {
+                tracing::error!(
+                    endpoint = %endpoint,
+                    status = code,
+                    "Unexpected HTTP error from Trakt API"
+                );
+                None
             }
         }
-
-        let mut response = match request.call() {
-            Ok(response) => response,
-            Err(ureq::Error::StatusCode(code)) => {
-                self.handle_auth_error(code, &endpoint);
-                return None;
-            }
-            Err(e) => {
-                tracing::error!(endpoint = %endpoint, error = %e, "Network error calling Trakt API");
-                return None;
-            }
-        };
-
-        response.body_mut().read_json().unwrap_or_default()
     }
 
+    /// Fetches the poster image URL from TMDB for the given media.
+    ///
+    /// Results are cached to minimize API calls. Uses retry logic with
+    /// exponential backoff for transient network failures.
+    ///
+    /// # Arguments
+    ///
+    /// * `media_type` - Whether this is a Movie or Show
+    /// * `tmdb_id` - The TMDB ID for the media
+    /// * `tmdb_token` - API token for TMDB requests
+    /// * `season_id` - Season number (used for TV shows)
+    ///
+    /// # Returns
+    ///
+    /// The poster image URL, or `None` if unavailable or on error
     pub fn get_poster(
         &mut self,
         media_type: MediaType,
@@ -208,6 +326,7 @@ impl Trakt {
         tmdb_token: String,
         season_id: u8,
     ) -> Option<String> {
+        // Check cache first - this should happen BEFORE any retry logic
         if let Some(image_url) = self.image_cache.get(&tmdb_id) {
             return Some(image_url.clone());
         }
@@ -223,28 +342,16 @@ impl Trakt {
             ),
         };
 
-        let mut response = match self.agent.get(&endpoint).call() {
-            Ok(response) => response,
-            Err(ureq::Error::StatusCode(401)) => {
-                tracing::error!(
-                    endpoint = %endpoint,
-                    "TMDB API key expired or invalid"
-                );
-                return None;
-            }
-            Err(e) => {
-                tracing::error!(
-                    media_type = %media_type.as_str(),
-                    error = %e,
-                    "Error fetching image"
-                );
-                return None;
-            }
-        };
+        let agent = &self.agent;
 
-        match response.body_mut().read_json::<Value>() {
+        let result: Result<Value, RetryError> =
+            execute_with_retry(|| agent.get(&endpoint).call(), &self.retry_config);
+
+        match result {
             Ok(body) => {
-                if body["posters"].as_array().unwrap_or(&vec![]).is_empty() {
+                // Extract poster URL from TMDB response
+                let posters = body["posters"].as_array();
+                if posters.is_none_or(|p| p.is_empty()) {
                     tracing::warn!(
                         media_type = %media_type.as_str(),
                         "Image not found in TMDB response"
@@ -252,68 +359,177 @@ impl Trakt {
                     return None;
                 }
 
-                let image_url = format!(
-                    "https://image.tmdb.org/t/p/w600_and_h600_bestv2{}",
-                    body["posters"][0]
-                        .clone()
-                        .get("file_path")
-                        .unwrap()
-                        .as_str()
-                        .unwrap()
-                );
+                // Extract the file_path from the first poster
+                let file_path = body["posters"][0].get("file_path").and_then(|v| v.as_str());
 
-                // Cache the image URL (LRU will evict oldest if full)
-                self.image_cache.put(tmdb_id, image_url.clone());
-                Some(image_url)
+                match file_path {
+                    Some(path) => {
+                        let image_url =
+                            format!("https://image.tmdb.org/t/p/w600_and_h600_bestv2{}", path);
+                        // Cache the image URL (LRU will evict oldest if full)
+                        self.image_cache.put(tmdb_id, image_url.clone());
+                        Some(image_url)
+                    }
+                    None => {
+                        tracing::warn!(
+                            media_type = %media_type.as_str(),
+                            "Poster missing file_path in TMDB response"
+                        );
+                        None
+                    }
+                }
             }
-            Err(e) => {
+            Err(RetryError::NonRetryableError(401)) => {
                 tracing::error!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
+                    "TMDB API key expired or invalid"
+                );
+                None
+            }
+            Err(RetryError::MaxRetriesExceeded {
+                attempts,
+                last_error,
+            }) => {
+                tracing::error!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
                     media_type = %media_type.as_str(),
-                    error = %e,
+                    attempts = attempts,
+                    last_error = %last_error,
+                    "Failed to fetch poster after retries"
+                );
+                None
+            }
+            Err(RetryError::NetworkError(msg)) => {
+                tracing::error!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
+                    media_type = %media_type.as_str(),
+                    error = %msg,
+                    "Network error fetching image"
+                );
+                None
+            }
+            Err(RetryError::ParseError(msg)) => {
+                tracing::error!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
+                    media_type = %media_type.as_str(),
+                    error = %msg,
                     "Failed to parse image response"
+                );
+                None
+            }
+            Err(RetryError::NonRetryableError(code)) => {
+                tracing::error!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
+                    media_type = %media_type.as_str(),
+                    status = code,
+                    "Unexpected HTTP error from TMDB API"
                 );
                 None
             }
         }
     }
 
+    /// Fetches the rating for a movie from Trakt.tv.
+    ///
+    /// Results are cached to minimize API calls. Uses retry logic with
+    /// exponential backoff for transient network failures.
+    ///
+    /// # Arguments
+    ///
+    /// * `movie_slug` - The Trakt slug identifier for the movie
+    ///
+    /// # Returns
+    ///
+    /// The movie rating (0.0 to 10.0), or 0.0 if unavailable or on error
     pub fn get_movie_rating(&mut self, movie_slug: String) -> f64 {
+        // Check cache first - this should happen BEFORE any retry logic
         if let Some(rating) = self.rating_cache.get(&movie_slug) {
             return *rating;
         }
 
         let endpoint = format!("{}/movies/{movie_slug}/ratings", self.trakt_base_url);
 
-        let mut response = match self
-            .agent
-            .get(&endpoint)
-            .header("Content-Type", "application/json")
-            .header("trakt-api-version", "2")
-            .header("trakt-api-key", &self.client_id)
-            .call()
-        {
-            Ok(response) => response,
-            Err(ureq::Error::StatusCode(code)) => {
-                self.handle_auth_error(code, &endpoint);
-                return 0.0;
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "Network error fetching movie rating");
-                return 0.0;
-            }
-        };
+        let agent = &self.agent;
+        let client_id = &self.client_id;
 
-        match response.body_mut().read_json::<TraktRatingsResponse>() {
+        let result: Result<TraktRatingsResponse, RetryError> = execute_with_retry(
+            || {
+                agent
+                    .get(&endpoint)
+                    .header("Content-Type", "application/json")
+                    .header("trakt-api-version", "2")
+                    .header("trakt-api-key", client_id)
+                    .call()
+            },
+            &self.retry_config,
+        );
+
+        match result {
             Ok(body) => {
                 // Cache the rating (LRU will evict oldest if full)
                 self.rating_cache.put(movie_slug, body.rating);
                 body.rating
             }
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to parse movie rating response");
+            Err(RetryError::NonRetryableError(code @ (401 | 403))) => {
+                self.handle_auth_error(code, &endpoint);
+                0.0
+            }
+            Err(RetryError::MaxRetriesExceeded {
+                attempts,
+                last_error,
+            }) => {
+                tracing::error!(
+                    endpoint = %endpoint,
+                    attempts = attempts,
+                    last_error = %last_error,
+                    "Failed to fetch movie rating after retries"
+                );
+                0.0
+            }
+            Err(RetryError::NetworkError(msg)) => {
+                tracing::error!(error = %msg, "Network error fetching movie rating");
+                0.0
+            }
+            Err(RetryError::ParseError(msg)) => {
+                tracing::error!(error = %msg, "Failed to parse movie rating response");
+                0.0
+            }
+            Err(RetryError::NonRetryableError(code)) => {
+                tracing::error!(
+                    endpoint = %endpoint,
+                    status = code,
+                    "Unexpected HTTP error fetching movie rating"
+                );
                 0.0
             }
         }
+    }
+
+    /// Sets the retry configuration for API requests.
+    ///
+    /// This is primarily useful for testing, allowing tests to use
+    /// shorter delays to speed up test execution.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The retry configuration to use
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::time::Duration;
+    /// use discrakt::retry::RetryConfig;
+    ///
+    /// let mut trakt = Trakt::new("client_id".to_string(), "user".to_string(), None);
+    /// trakt.set_retry_config(RetryConfig {
+    ///     max_retries: 2,
+    ///     base_delay: Duration::from_millis(10),
+    ///     max_delay: Duration::from_millis(100),
+    ///     enable_jitter: false,
+    /// });
+    /// ```
+    pub fn set_retry_config(&mut self, config: RetryConfig) {
+        self.retry_config = config;
     }
 
     /// Sets the preferred language for TMDB title lookups.
@@ -335,9 +551,11 @@ impl Trakt {
     ///
     /// Results are cached to minimize API calls. Returns an empty string
     /// if no translation is available (which is also cached to avoid
-    /// repeated lookups for untranslated content).
+    /// repeated lookups for untranslated content). Uses retry logic with
+    /// exponential backoff for transient network failures.
     ///
     /// # Arguments
+    ///
     /// * `media_type` - Whether this is a Movie or Show
     /// * `tmdb_id` - The TMDB ID for the media
     /// * `tmdb_token` - API token for TMDB requests
@@ -345,7 +563,8 @@ impl Trakt {
     /// * `episode` - Episode number (required for episode lookups)
     ///
     /// # Returns
-    /// The localized title, or empty string if unavailable
+    ///
+    /// The localized title, or empty string if unavailable or on error
     pub fn get_title(
         &mut self,
         media_type: MediaType,
@@ -361,6 +580,7 @@ impl Trakt {
             format!("{}_{tmdb_id}", self.language)
         };
 
+        // Check cache first - this should happen BEFORE any retry logic
         if let Some(title) = self.title_cache.get(&cache_key) {
             return title.clone();
         }
@@ -385,32 +605,73 @@ impl Trakt {
             }
         };
 
-        let title = match self.agent.get(&endpoint).call() {
-            Ok(mut resp) => match resp.body_mut().read_json::<serde_json::Value>() {
-                Ok(json) => {
-                    let key = if matches!(media_type, MediaType::Movie) {
-                        "title"
-                    } else {
-                        "name"
-                    };
-                    json[key].as_str().unwrap_or("").to_string()
-                }
-                Err(e) => {
-                    tracing::debug!(
-                        error = %e,
-                        media_type = %media_type.as_str(),
-                        tmdb_id = %tmdb_id,
-                        "Failed to parse TMDB title response"
-                    );
-                    String::new()
-                }
-            },
-            Err(e) => {
+        let agent = &self.agent;
+
+        // Use serde_json::Value for flexible JSON parsing since we need to
+        // extract different keys ("title" vs "name") based on media type
+        let result: Result<Value, RetryError> =
+            execute_with_retry(|| agent.get(&endpoint).call(), &self.retry_config);
+
+        let title = match result {
+            Ok(json) => {
+                // Movies use "title", TV shows/episodes use "name"
+                let key = if matches!(media_type, MediaType::Movie) {
+                    "title"
+                } else {
+                    "name"
+                };
+                json[key].as_str().unwrap_or("").to_string()
+            }
+            Err(RetryError::NonRetryableError(401)) => {
                 tracing::debug!(
-                    error = %e,
+                    endpoint = %sanitize_url_for_logging(&endpoint),
+                    media_type = %media_type.as_str(),
+                    tmdb_id = %tmdb_id,
+                    "TMDB API key expired or invalid"
+                );
+                String::new()
+            }
+            Err(RetryError::MaxRetriesExceeded {
+                attempts,
+                last_error,
+            }) => {
+                tracing::debug!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
+                    media_type = %media_type.as_str(),
+                    tmdb_id = %tmdb_id,
+                    attempts = attempts,
+                    last_error = %last_error,
+                    "Failed to fetch localized title after retries"
+                );
+                String::new()
+            }
+            Err(RetryError::NetworkError(msg)) => {
+                tracing::debug!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
+                    error = %msg,
                     media_type = %media_type.as_str(),
                     tmdb_id = %tmdb_id,
                     "Failed to fetch localized title from TMDB"
+                );
+                String::new()
+            }
+            Err(RetryError::ParseError(msg)) => {
+                tracing::debug!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
+                    error = %msg,
+                    media_type = %media_type.as_str(),
+                    tmdb_id = %tmdb_id,
+                    "Failed to parse TMDB title response"
+                );
+                String::new()
+            }
+            Err(RetryError::NonRetryableError(code)) => {
+                tracing::debug!(
+                    endpoint = %sanitize_url_for_logging(&endpoint),
+                    media_type = %media_type.as_str(),
+                    tmdb_id = %tmdb_id,
+                    status = code,
+                    "Unexpected HTTP error fetching localized title"
                 );
                 String::new()
             }
