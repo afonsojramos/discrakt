@@ -249,7 +249,7 @@ fn styles() -> &'static str {
         .auth-container.show {
             display: block;
         }
-        
+
         .auth-instructions {
             margin-bottom: 24px;
             line-height: 1.6;
@@ -387,7 +387,7 @@ fn script() -> &'static str {
 
             document.getElementById('deviceCode').textContent = deviceInfo.user_code;
 
-            const autoUrl = deviceInfo.verification_url + '?code=' + deviceInfo.user_code;
+            const autoUrl = deviceInfo.verification_url + '?code=' + encodeURIComponent(deviceInfo.user_code);
             document.getElementById('traktLink').href = autoUrl;
 
             const expiresInMinutes = Math.floor(deviceInfo.expires_in / 60);
