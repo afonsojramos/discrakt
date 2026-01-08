@@ -163,7 +163,7 @@ enum RetryableResult<T> {
 ///
 /// match result {
 ///     Ok(response) => println!("Got data: {:?}", response),
-///     Err(RetryError::MaxRetriesExceeded(attempts)) => {
+///     Err(RetryError::MaxRetriesExceeded { attempts, .. }) => {
 ///         eprintln!("Failed after {} attempts", attempts);
 ///     }
 ///     Err(e) => eprintln!("Error: {}", e),

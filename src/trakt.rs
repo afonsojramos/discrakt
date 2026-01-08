@@ -25,11 +25,14 @@ fn sanitize_url_for_logging(url: &str) -> String {
             })
             .collect();
 
-        if sanitized_params.is_empty() {
-            format!("{}?[REDACTED]", base)
+        // Use consistent formatting - show non-sensitive params or just [REDACTED]
+        let sanitized_query = if sanitized_params.is_empty() {
+            "[REDACTED]".to_string()
         } else {
-            format!("{}?{}&[REDACTED]", base, sanitized_params.join("&"))
-        }
+            sanitized_params.join("&")
+        };
+
+        format!("{}?{}", base, sanitized_query)
     } else {
         url.to_string()
     }
