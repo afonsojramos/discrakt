@@ -1,5 +1,6 @@
 use chrono::{DateTime, FixedOffset, SecondsFormat, Utc};
 use configparser::ini::Ini;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use serde_json::json;
 use std::{env, path::PathBuf, sync::OnceLock, thread, time::Duration};
@@ -347,17 +348,21 @@ impl Env {
             "Device code obtained"
         );
 
+        let encoded_code = utf8_percent_encode(&device_code.user_code, NON_ALPHANUMERIC);
+        let auto_url = format!("{}?code={}", device_code.verification_url, encoded_code);
+
         // Step 2: Display code to user and open browser
         // Note: In Windows release builds, the console is hidden, so this output
         // may not be visible. The browser-based setup flow should be used instead.
         println!("\n========================================");
         println!("  Trakt Authorization Required");
         println!("========================================\n");
-        println!("  1. Go to: {}", device_code.verification_url);
-        println!("  2. Enter code: {}\n", device_code.user_code);
+        println!("  Open this link to authorize:");
+        println!("  {}\n", auto_url);
+        println!("  (Verification Code: {})\n", device_code.user_code);
         println!("  Waiting for authorization...\n");
 
-        if webbrowser::open(&device_code.verification_url).is_err() {
+        if webbrowser::open(&auto_url).is_err() {
             tracing::warn!("Failed to open browser automatically");
             println!("  (Please open the URL manually in your browser)\n");
         }

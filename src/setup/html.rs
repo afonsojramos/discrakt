@@ -14,7 +14,6 @@ const APP_TAGLINE: &str = "Trakt to Discord Rich Presence";
 const GITHUB_URL: &str = "https://github.com/afonsojramos/discrakt";
 
 const TRAKT_SETTINGS_URL: &str = "https://trakt.tv/settings";
-const TRAKT_ACTIVATE_URL: &str = "https://trakt.tv/activate";
 
 const COLOR_SUCCESS: &str = "#4CAF50";
 
@@ -40,6 +39,19 @@ fn styles() -> &'static str {
             align-items: center;
             padding: 20px;
             color: #e0e0e0;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            cursor: default;
+        }
+
+        input[type="text"], input[type="number"], textarea {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+            cursor: text;
         }
 
         .container {
@@ -62,6 +74,7 @@ fn styles() -> &'static str {
             max-width: 200px;
             height: auto;
             margin-bottom: 8px;
+            pointer-events: none;
         }
 
         .logo p {
@@ -134,21 +147,15 @@ fn styles() -> &'static str {
             padding: 16px;
             margin-bottom: 24px;
         }
-
         .info-box h3 {
             color: #ed1c24;
             margin-bottom: 8px;
             font-size: 0.95rem;
         }
 
-        .info-box ol {
-            margin-left: 20px;
+        .info-box p {
             font-size: 0.85rem;
             line-height: 1.6;
-        }
-
-        .info-box a {
-            color: #ff6b6b;
         }
 
         button, .btn {
@@ -166,7 +173,6 @@ fn styles() -> &'static str {
             display: inline-block;
             text-align: center;
         }
-
         button:hover, .btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(237, 28, 36, 0.4);
@@ -182,6 +188,34 @@ fn styles() -> &'static str {
             transform: none;
         }
 
+        .device-code {
+            font-size: 2.5rem;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 0.3em;
+            color: #fff;
+            background: rgba(237, 28, 36, 0.2);
+            border: 2px solid #ed1c24;
+            border-radius: 12px;
+            padding: 20px 30px;
+            margin: 24px auto;
+            display: block; 
+            width: -moz-fit-content;
+            width: fit-content;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .device-code:hover {
+            background: rgba(237, 28, 36, 0.3);
+            transform: scale(1.02);
+            box-shadow: 0 0 15px rgba(237, 28, 36, 0.4);
+        }
+
+        .device-code:active {
+            transform: scale(0.98);
+        }
+
         .error {
             background: rgba(220, 53, 69, 0.2);
             border: 1px solid rgba(220, 53, 69, 0.5);
@@ -191,7 +225,6 @@ fn styles() -> &'static str {
             margin-bottom: 20px;
             display: none;
         }
-
         .error.show {
             display: block;
         }
@@ -205,6 +238,7 @@ fn styles() -> &'static str {
 
         .footer a {
             color: #888;
+            cursor: pointer;
         }
 
         .auth-container {
@@ -214,20 +248,6 @@ fn styles() -> &'static str {
 
         .auth-container.show {
             display: block;
-        }
-
-        .device-code {
-            font-size: 2.5rem;
-            font-weight: bold;
-            font-family: 'Courier New', monospace;
-            letter-spacing: 0.3em;
-            color: #fff;
-            background: rgba(237, 28, 36, 0.2);
-            border: 2px solid #ed1c24;
-            border-radius: 12px;
-            padding: 20px 30px;
-            margin: 24px 0;
-            display: inline-block;
         }
 
         .auth-instructions {
@@ -366,7 +386,9 @@ fn script() -> &'static str {
             document.getElementById('auth-container').classList.add('show');
 
             document.getElementById('deviceCode').textContent = deviceInfo.user_code;
-            document.getElementById('traktLink').href = deviceInfo.verification_url;
+
+            const autoUrl = deviceInfo.verification_url + '?code=' + encodeURIComponent(deviceInfo.user_code);
+            document.getElementById('traktLink').href = autoUrl;
 
             const expiresInMinutes = Math.floor(deviceInfo.expires_in / 60);
             document.getElementById('expiresIn').textContent = expiresInMinutes;
@@ -492,22 +514,19 @@ fn setup_form() -> String {
 
 fn auth_screen() -> String {
     format!(
-        r#"
+        r##"
         <div id="auth-container" class="auth-container">
             <div class="auth-instructions">
-                <div class="step">
-                    <span class="step-number">1</span>
-                    <span>Copy the code below</span>
-                </div>
-                <div class="device-code" id="deviceCode">--------</div>
-                <div class="step">
-                    <span class="step-number">2</span>
-                    <span>Click the button to open Trakt and enter the code</span>
-                </div>
+                <p>Click the button below to authorize Discrakt.</p>
+                <p style="font-size: 0.9rem; color: #888;">
+                    Verify that the code on Trakt matches this one:
+                </p>
             </div>
 
-            <a id="traktLink" href="{TRAKT_ACTIVATE_URL}" target="_blank" class="btn">
-                Open Trakt to Authorize
+            <div class="device-code" id="deviceCode">--------</div>
+
+            <a id="traktLink" href="#" target="_blank" class="btn">
+                Open Trakt & Authorize
             </a>
 
             <div id="statusMessage" class="status-message waiting">
@@ -520,7 +539,7 @@ fn auth_screen() -> String {
                 <p><a href="{GITHUB_URL}" target="_blank">GitHub</a></p>
             </div>
         </div>
-        "#
+        "##
     )
 }
 
