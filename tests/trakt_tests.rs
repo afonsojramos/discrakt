@@ -808,10 +808,8 @@ use discrakt::trakt::MAX_CACHE_SIZE;
 
 #[test]
 fn test_max_cache_size_is_reasonable() {
-    // Verify the cache size constant is sensible
-    assert!(MAX_CACHE_SIZE > 0);
-    assert!(MAX_CACHE_SIZE <= 10000); // Not unreasonably large
-    assert_eq!(MAX_CACHE_SIZE, 500); // Current expected value
+    // Verify the cache size constant is the expected value
+    assert_eq!(MAX_CACHE_SIZE, 500);
 }
 
 #[test]
