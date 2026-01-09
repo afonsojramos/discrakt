@@ -410,6 +410,8 @@ jobs:
 
     steps:
       - name: Update Winget package
+        # Allow failure until package exists in winget-pkgs (initial submission pending)
+        continue-on-error: true
         uses: vedantmgoyal9/winget-releaser@19e706d4c9121098010096f9c495a70a7518b30f # main
         with:
           identifier: afonsojramos.discrakt
