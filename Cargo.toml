@@ -50,7 +50,7 @@ objc2-foundation = "0.3"
 winreg = "0.55"
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
-winresource = "0.1.28"
+winresource = "0.1.29"
 
 [dev-dependencies]
 mockito = "1.7"
