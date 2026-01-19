@@ -97,9 +97,17 @@ fn setup_panic_hook() {
         let backtrace = std::backtrace::Backtrace::force_capture();
         let panic_msg = format!(
             "PANIC at {}: {}\n\nBacktrace:\n{}",
-            panic_info.location().map_or("unknown".to_string(), |l| l.to_string()),
-            panic_info.payload().downcast_ref::<&str>().copied()
-                .or_else(|| panic_info.payload().downcast_ref::<String>().map(|s| s.as_str()))
+            panic_info
+                .location()
+                .map_or("unknown".to_string(), |l| l.to_string()),
+            panic_info
+                .payload()
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| panic_info
+                    .payload()
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str()))
                 .unwrap_or("Unknown panic"),
             backtrace
         );
