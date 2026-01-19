@@ -109,13 +109,19 @@ fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
         );
     }
 
-    // Use builder to get proper filename format: discrakt.YYYY-MM-DD.log
-    // Keep only 7 days of logs to prevent unbounded disk usage
+    // Truncate log file if > 1MB to prevent unbounded growth
+    let log_file = log_dir.join("discrakt.log");
+    if let Ok(metadata) = std::fs::metadata(&log_file) {
+        if metadata.len() > 1_000_000 {
+            let _ = std::fs::write(&log_file, "");
+        }
+    }
+
+    // Single log file (no date rotation = no timezone issues)
     let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
-        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .rotation(tracing_appender::rolling::Rotation::NEVER)
         .filename_prefix("discrakt")
         .filename_suffix("log")
-        .max_log_files(7)
         .build(&log_dir)
         .expect("Failed to create log file appender");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
@@ -154,9 +160,8 @@ the system tray, updating your Discord status based on Trakt.
 
 Logging:
     Logs are written to: {}
-    Files are named discrakt.YYYY-MM-DD.log (daily rotation).
+    Log file: discrakt.log (truncated at startup if > 1MB).
     Only warnings and errors are logged by default.
-    Old logs are automatically deleted after 7 days.
     Set RUST_LOG=info or RUST_LOG=debug for verbose output.
 
 Examples:
