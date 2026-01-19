@@ -4,6 +4,7 @@
     windows_subsystem = "windows"
 )]
 
+use chrono::Utc;
 use discrakt::{
     autostart,
     discord::Discord,
@@ -380,9 +381,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
+            // Check if the activity has expired
+            let watch_stats = get_watch_stats(&response);
+            if Utc::now() >= watch_stats.end_date {
+                tracing::debug!("Activity has expired, clearing Discord presence");
+                if let Ok(mut state) = app_state_clone.write() {
+                    state.clear_watching();
+                }
+                discord.close();
+                continue;
+            }
+
             // Update state with current watching info
             if let Ok(mut state) = app_state_clone.write() {
-                let watch_stats = get_watch_stats(&response);
                 let (title, details) = match response.r#type.as_str() {
                     "movie" => {
                         let movie = response.movie.as_ref().unwrap();
