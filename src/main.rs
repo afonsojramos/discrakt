@@ -91,6 +91,44 @@ fn platform_init() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn setup_panic_hook() {
+    let log_dir = log_dir_path();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let panic_msg = format!(
+            "PANIC at {}: {}\n\nBacktrace:\n{}",
+            panic_info
+                .location()
+                .map_or("unknown".to_string(), |l| l.to_string()),
+            panic_info
+                .payload()
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| panic_info
+                    .payload()
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str()))
+                .unwrap_or("Unknown panic"),
+            backtrace
+        );
+
+        // Log through tracing (may not flush in time)
+        tracing::error!("{}", panic_msg);
+
+        // Also write directly to log file to ensure it's captured
+        let log_file = log_dir.join("discrakt.log");
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_file)
+        {
+            use std::io::Write;
+            let timestamp = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f");
+            let _ = writeln!(file, "{} ERROR PANIC: {}", timestamp, panic_msg);
+        }
+    }));
+}
+
 fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     // Default to warn level for minimal logging in production
     // Users can set RUST_LOG=info or RUST_LOG=debug for verbose output
@@ -307,6 +345,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Keep the guard alive for the duration of the program (Windows file logging)
     let _log_guard = init_logging();
+
+    // Set up panic hook to capture crashes in log file
+    setup_panic_hook();
 
     // Platform-specific initialization
     platform_init()?;
