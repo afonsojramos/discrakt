@@ -89,8 +89,13 @@ Download the universal DMG from the latest [release](https://github.com/afonsojr
 
 ### Windows
 
-#### Scoop (recommended)
+#### Winget (recommended)
 
+```powershell
+winget install afonsojramos.discrakt
+```
+
+#### Scoop
 ```powershell
 scoop bucket add extras
 scoop install discrakt
