@@ -3,6 +3,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 use ureq::Agent;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 use crate::retry::{execute_with_retry, RetryConfig, RetryError};
 use crate::utils::{user_agent, MediaType};
@@ -214,13 +215,18 @@ impl Trakt {
     /// - `Some(TraktWatchingResponse)` if the user is currently watching something
     /// - `None` if not watching anything, or if an error occurred
     pub fn get_watching(&self) -> Option<TraktWatchingResponse> {
-        let endpoint = format!("{}/users/{}/watching", self.trakt_base_url, self.username);
+        let has_oauth = self
+            .oauth_access_token
+            .as_ref()
+            .is_some_and(|t| !t.is_empty());
 
-        // Build authorization header outside closure to avoid lifetime issues.
-        // In Rust, closures capture variables by reference by default, but the
-        // `execute_with_retry` function requires `Fn()` which means the closure
-        // may be called multiple times. We need owned data or references that
-        // outlive the closure.
+        let endpoint = if has_oauth {
+            format!("{}/users/me/watching", self.trakt_base_url)
+        } else {
+            let encoded = utf8_percent_encode(&self.username, NON_ALPHANUMERIC).to_string();
+            format!("{}/users/{}/watching", self.trakt_base_url, encoded)
+        };
+
         let authorization = self.oauth_access_token.as_ref().and_then(|token| {
             if token.is_empty() {
                 None
@@ -229,9 +235,6 @@ impl Trakt {
             }
         });
 
-        // Clone values needed inside the closure to avoid borrowing `self`
-        // multiple times. The closure captures these by value (via `move` semantics
-        // inferred from the Clone).
         let agent = &self.agent;
         let client_id = &self.client_id;
 
@@ -253,18 +256,12 @@ impl Trakt {
         );
 
         match result {
-            // The API returns `null` (parsed as `None`) when not watching anything
             Ok(response) => response,
             Err(RetryError::NonRetryableError(code @ (401 | 403))) => {
                 self.handle_auth_error(code, &endpoint);
                 None
             }
-            Err(RetryError::NonRetryableError(204)) => {
-                // HTTP 204 No Content - user is not watching anything.
-                // Trakt returns 204 (not 200 with empty body) when nothing is playing.
-                // This is expected API behavior, not an error condition.
-                None
-            }
+            Err(RetryError::NonRetryableError(204)) => None,
             Err(RetryError::MaxRetriesExceeded {
                 attempts,
                 last_error,
@@ -303,6 +300,7 @@ impl Trakt {
             }
         }
     }
+
 
     /// Fetches the poster image URL from TMDB for the given media.
     ///
