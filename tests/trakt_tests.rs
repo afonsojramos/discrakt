@@ -376,11 +376,12 @@ fn test_get_watching_handles_403() {
 }
 
 #[test]
-fn test_get_watching_with_oauth_token() {
+fn test_get_watching_with_oauth_uses_me_endpoint() {
     let mut server = mockito::Server::new();
 
+    // When OAuth token is present, should use /users/me/watching instead of /users/{username}/watching
     let mock = server
-        .mock("GET", "/users/testuser/watching")
+        .mock("GET", "/users/me/watching")
         .match_header("Authorization", "Bearer my_oauth_token")
         .with_status(200)
         .with_body(common::fixtures::TRAKT_MOVIE_WATCHING)
@@ -388,8 +389,60 @@ fn test_get_watching_with_oauth_token() {
 
     let trakt = Trakt::with_config(TraktConfig {
         client_id: "test_client".to_string(),
-        username: "testuser".to_string(),
+        username: "testuser".to_string(), // Username should be ignored when OAuth is present
         oauth_access_token: Some("my_oauth_token".to_string()),
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+
+    let result = trakt.get_watching();
+
+    mock.assert();
+    assert!(result.is_some());
+}
+
+#[test]
+fn test_get_watching_encodes_special_chars_in_username() {
+    let mut server = mockito::Server::new();
+
+    // Username with spaces should be URL-encoded when no OAuth token is present
+    let mock = server
+        .mock("GET", "/users/john%20doe/watching")
+        .with_status(200)
+        .with_body(common::fixtures::TRAKT_MOVIE_WATCHING)
+        .create();
+
+    let trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "john doe".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: Some(server.url()),
+        tmdb_base_url: None,
+        language: None,
+    });
+
+    let result = trakt.get_watching();
+
+    mock.assert();
+    assert!(result.is_some());
+}
+
+#[test]
+fn test_get_watching_empty_oauth_uses_username_endpoint() {
+    let mut server = mockito::Server::new();
+
+    // Empty OAuth token should fall back to /users/{username}/watching
+    let mock = server
+        .mock("GET", "/users/testuser/watching")
+        .with_status(200)
+        .with_body(common::fixtures::TRAKT_MOVIE_WATCHING)
+        .create();
+
+    let trakt = Trakt::with_config(TraktConfig {
+        client_id: "test_client".to_string(),
+        username: "testuser".to_string(),
+        oauth_access_token: Some("".to_string()), // Empty token
         trakt_base_url: Some(server.url()),
         tmdb_base_url: None,
         language: None,
