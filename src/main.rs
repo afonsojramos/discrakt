@@ -410,6 +410,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let is_paused = app_state_clone.read().map(|s| s.is_paused).unwrap_or(false);
 
             if is_paused {
+                discord.clear_activity();
                 discord.close();
                 continue;
             }
@@ -422,6 +423,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Ok(mut state) = app_state_clone.write() {
                         state.clear_watching();
                     }
+                    discord.clear_activity();
                     discord.close();
                     continue;
                 }
@@ -434,6 +436,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Ok(mut state) = app_state_clone.write() {
                     state.clear_watching();
                 }
+                discord.clear_activity();
                 discord.close();
                 continue;
             }
@@ -467,6 +470,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             discord.set_activity(&response, &mut trakt, tmdb_token.clone());
         }
 
+        discord.clear_activity();
         discord.close();
         tracing::info!("Polling thread stopped");
     });
