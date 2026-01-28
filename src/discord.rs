@@ -125,6 +125,10 @@ impl Discord {
         }
     }
 
+    pub fn clear_activity(&mut self) {
+        let _ = self.client.clear_activity();
+    }
+
     pub fn close(&mut self) {
         let _ = self.client.close();
     }

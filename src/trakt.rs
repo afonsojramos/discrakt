@@ -1,9 +1,9 @@
 use lru::LruCache;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use serde_json::Value;
 use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 use ureq::Agent;
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 use crate::retry::{execute_with_retry, RetryConfig, RetryError};
 use crate::utils::{user_agent, MediaType};
@@ -300,7 +300,6 @@ impl Trakt {
             }
         }
     }
-
 
     /// Fetches the poster image URL from TMDB for the given media.
     ///
