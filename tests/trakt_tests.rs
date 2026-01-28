@@ -433,6 +433,10 @@ fn test_get_watching_encodes_special_chars_in_username() {
     // Username with spaces should be URL-encoded when no OAuth token is present
     let mock = server
         .mock("GET", "/users/john%20doe/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(200)
         .with_body(common::fixtures::TRAKT_MOVIE_WATCHING)
         .create();
@@ -459,6 +463,10 @@ fn test_get_watching_empty_oauth_uses_username_endpoint() {
     // Empty OAuth token should fall back to /users/{username}/watching
     let mock = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(200)
         .with_body(common::fixtures::TRAKT_MOVIE_WATCHING)
         .create();
