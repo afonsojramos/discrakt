@@ -788,8 +788,21 @@ pub fn set_restrictive_permissions(_path: &std::path::Path) {}
 pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {
     let start_date = DateTime::parse_from_rfc3339(&trakt_response.started_at).unwrap();
     let end_date = DateTime::parse_from_rfc3339(&trakt_response.expires_at).unwrap();
-    let percentage = Utc::now().signed_duration_since(start_date).num_seconds() as f32
-        / end_date.signed_duration_since(start_date).num_seconds() as f32;
+
+    let (start_date, end_date) = match extract_runtime_minutes(trakt_response) {
+        Some(runtime_minutes) => {
+            let duration = chrono::Duration::minutes(runtime_minutes);
+            (end_date - duration, end_date)
+        }
+        None => (start_date, end_date),
+    };
+
+    let total_seconds = end_date
+        .signed_duration_since(start_date)
+        .num_seconds()
+        .max(1);
+    let percentage =
+        Utc::now().signed_duration_since(start_date).num_seconds() as f32 / total_seconds as f32;
     let watch_percentage = format!("{:.2}%", percentage * 100.0);
 
     WatchStats {
@@ -797,6 +810,26 @@ pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {
         start_date,
         end_date,
     }
+}
+
+fn extract_runtime_minutes(trakt_response: &TraktWatchingResponse) -> Option<i64> {
+    let minutes = match trakt_response.r#type.as_str() {
+        "movie" => trakt_response
+            .movie
+            .as_ref()
+            .and_then(|movie| movie.runtime),
+        "episode" => trakt_response
+            .episode
+            .as_ref()
+            .and_then(|episode| episode.runtime)
+            .or_else(|| trakt_response.show.as_ref().and_then(|show| show.runtime)),
+        _ => None,
+    };
+
+    minutes.and_then(|value| {
+        let value = value as i64;
+        if value > 0 { Some(value) } else { None }
+    })
 }
 
 pub enum MediaType {

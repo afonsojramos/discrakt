@@ -11,6 +11,7 @@ use discrakt::utils::{
     DEFAULT_DISCORD_APP_ID_MOVIE, DEFAULT_DISCORD_APP_ID_SHOW, DEFAULT_TMDB_TOKEN,
     DEFAULT_TRAKT_CLIENT_ID, LANGUAGES,
 };
+use chrono::{DateTime, Duration};
 use image::RgbaImage;
 
 // ============================================================================
@@ -78,6 +79,21 @@ fn test_get_watch_stats_dates_parsed() {
     // Verify dates are valid (not default)
     assert!(stats.start_date.timestamp() > 0);
     assert!(stats.end_date.timestamp() > stats.start_date.timestamp());
+}
+
+#[test]
+fn test_get_watch_stats_uses_runtime_over_stale_start() {
+    let response: TraktWatchingResponse =
+        serde_json::from_str(common::fixtures::TRAKT_EPISODE_WATCHING_STALE_START).unwrap();
+
+    let stats = get_watch_stats(&response);
+
+    let end_date =
+        DateTime::parse_from_rfc3339("2024-01-15T11:00:00.000Z").expect("valid end date");
+    let expected_start = end_date - Duration::minutes(44);
+
+    assert_eq!(stats.end_date.timestamp(), end_date.timestamp());
+    assert_eq!(stats.start_date.timestamp(), expected_start.timestamp());
 }
 
 // ============================================================================
