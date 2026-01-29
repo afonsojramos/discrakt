@@ -71,6 +71,7 @@ fn create_movie_response() -> TraktWatchingResponse {
                 tmdb: Some(27205),
                 tvrage: None,
             },
+            runtime: None,
         }),
         show: None,
         episode: None,
@@ -142,6 +143,7 @@ fn create_episode_response() -> TraktWatchingResponse {
                 tmdb: Some(1396),
                 tvrage: Some(18164),
             },
+            runtime: None,
         }),
         episode: Some(TraktEpisode {
             season: 5,
@@ -155,6 +157,7 @@ fn create_episode_response() -> TraktWatchingResponse {
                 tmdb: Some(62161),
                 tvrage: None,
             },
+            runtime: None,
         }),
     }
 }
@@ -243,6 +246,7 @@ fn test_build_payload_movie_missing_ids() {
                 tmdb: None,
                 tvrage: None,
             },
+            runtime: None,
         }),
         show: None,
         episode: None,
