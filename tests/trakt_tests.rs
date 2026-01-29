@@ -245,6 +245,10 @@ fn test_get_watching_returns_movie() {
 
     let mock = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .match_header("trakt-api-version", "2")
         .match_header("trakt-api-key", "test_client")
         .with_status(200)
@@ -277,6 +281,10 @@ fn test_get_watching_returns_episode() {
 
     let mock = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .match_header("trakt-api-version", "2")
         .with_status(200)
         .with_header("content-type", "application/json")
@@ -309,6 +317,10 @@ fn test_get_watching_returns_none_when_not_watching() {
 
     let mock = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(204) // No Content
         .create();
 
@@ -333,6 +345,10 @@ fn test_get_watching_handles_401() {
 
     let mock = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(401)
         .create();
 
@@ -357,6 +373,10 @@ fn test_get_watching_handles_403() {
 
     let mock = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(403)
         .create();
 
@@ -382,6 +402,10 @@ fn test_get_watching_with_oauth_uses_me_endpoint() {
     // When OAuth token is present, should use /users/me/watching instead of /users/{username}/watching
     let mock = server
         .mock("GET", "/users/me/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .match_header("Authorization", "Bearer my_oauth_token")
         .with_status(200)
         .with_body(common::fixtures::TRAKT_MOVIE_WATCHING)
@@ -409,6 +433,10 @@ fn test_get_watching_encodes_special_chars_in_username() {
     // Username with spaces should be URL-encoded when no OAuth token is present
     let mock = server
         .mock("GET", "/users/john%20doe/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(200)
         .with_body(common::fixtures::TRAKT_MOVIE_WATCHING)
         .create();
@@ -435,6 +463,10 @@ fn test_get_watching_empty_oauth_uses_username_endpoint() {
     // Empty OAuth token should fall back to /users/{username}/watching
     let mock = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(200)
         .with_body(common::fixtures::TRAKT_MOVIE_WATCHING)
         .create();
@@ -1076,18 +1108,30 @@ fn test_get_watching_retries_on_503() {
     // First two calls return 503, third call succeeds
     let mock_503_first = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(503)
         .expect(1)
         .create();
 
     let mock_503_second = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(503)
         .expect(1)
         .create();
 
     let mock_success = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(common::fixtures::TRAKT_MOVIE_WATCHING)
@@ -1127,18 +1171,30 @@ fn test_get_watching_retries_on_429() {
     // First two calls return 429 (rate limited), third call succeeds
     let mock_429_first = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(429)
         .expect(1)
         .create();
 
     let mock_429_second = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(429)
         .expect(1)
         .create();
 
     let mock_success = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(common::fixtures::TRAKT_EPISODE_WATCHING)
@@ -1176,6 +1232,10 @@ fn test_get_watching_gives_up_after_max_retries() {
     // Server always returns 503 - should hit max_retries + 1 times (initial + retries)
     let mock_503 = server
         .mock("GET", "/users/testuser/watching")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "extended".into(),
+            "full".into(),
+        ))
         .with_status(503)
         .expect(4) // 1 initial + 3 retries = 4 total attempts
         .create();

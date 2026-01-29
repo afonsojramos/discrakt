@@ -70,6 +70,7 @@ pub struct TraktMovie {
     pub title: String,
     pub year: u16,
     pub ids: TraktIds,
+    pub runtime: Option<u16>,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
@@ -77,6 +78,7 @@ pub struct TraktShow {
     pub title: String,
     pub year: u16,
     pub ids: TraktIds,
+    pub runtime: Option<u16>,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
@@ -85,6 +87,7 @@ pub struct TraktEpisode {
     pub number: u8,
     pub title: String,
     pub ids: TraktIds,
+    pub runtime: Option<u16>,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
@@ -221,10 +224,13 @@ impl Trakt {
             .is_some_and(|t| !t.is_empty());
 
         let endpoint = if has_oauth {
-            format!("{}/users/me/watching", self.trakt_base_url)
+            format!("{}/users/me/watching?extended=full", self.trakt_base_url)
         } else {
             let encoded = utf8_percent_encode(&self.username, NON_ALPHANUMERIC).to_string();
-            format!("{}/users/{}/watching", self.trakt_base_url, encoded)
+            format!(
+                "{}/users/{}/watching?extended=full",
+                self.trakt_base_url, encoded
+            )
         };
 
         let authorization = self.oauth_access_token.as_ref().and_then(|token| {

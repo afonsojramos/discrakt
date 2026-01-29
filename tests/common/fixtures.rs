@@ -18,7 +18,8 @@ pub const TRAKT_MOVIE_WATCHING: &str = r#"{
             "imdb": "tt1375666",
             "tmdb": 27205,
             "tvrage": null
-        }
+        },
+        "runtime": 150
     }
 }"#;
 
@@ -50,7 +51,42 @@ pub const TRAKT_EPISODE_WATCHING: &str = r#"{
             "imdb": "tt2301451",
             "tmdb": 62161,
             "tvrage": null
-        }
+        },
+        "runtime": 60
+    }
+}"#;
+
+/// Trakt API: Episode watching response with stale started_at and runtime
+pub const TRAKT_EPISODE_WATCHING_STALE_START: &str = r#"{
+    "expires_at": "2024-01-15T11:00:00.000Z",
+    "started_at": "2024-01-15T08:00:00.000Z",
+    "action": "checkin",
+    "type": "episode",
+    "show": {
+        "title": "Stargate SG-1",
+        "year": 1997,
+        "ids": {
+            "trakt": 4605,
+            "slug": "stargate-sg-1",
+            "tvdb": 72449,
+            "imdb": "tt0118480",
+            "tmdb": 4629,
+            "tvrage": null
+        },
+        "runtime": 44
+    },
+    "episode": {
+        "season": 4,
+        "number": 7,
+        "title": "Watergate",
+        "ids": {
+            "trakt": 344183,
+            "tvdb": 85823,
+            "imdb": "tt0709217",
+            "tmdb": 335902,
+            "tvrage": null
+        },
+        "runtime": 44
     }
 }"#;
 
