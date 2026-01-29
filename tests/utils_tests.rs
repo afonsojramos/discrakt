@@ -2,6 +2,7 @@
 
 mod common;
 
+use chrono::{DateTime, Duration};
 use discrakt::trakt::TraktWatchingResponse;
 #[cfg(target_os = "macos")]
 use discrakt::utils::is_light_mode;
@@ -11,7 +12,6 @@ use discrakt::utils::{
     DEFAULT_DISCORD_APP_ID_MOVIE, DEFAULT_DISCORD_APP_ID_SHOW, DEFAULT_TMDB_TOKEN,
     DEFAULT_TRAKT_CLIENT_ID, LANGUAGES,
 };
-use chrono::{DateTime, Duration};
 use image::RgbaImage;
 
 // ============================================================================

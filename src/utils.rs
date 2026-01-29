@@ -828,7 +828,11 @@ fn extract_runtime_minutes(trakt_response: &TraktWatchingResponse) -> Option<i64
 
     minutes.and_then(|value| {
         let value = value as i64;
-        if value > 0 { Some(value) } else { None }
+        if value > 0 {
+            Some(value)
+        } else {
+            None
+        }
     })
 }
 
