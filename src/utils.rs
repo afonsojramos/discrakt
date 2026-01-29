@@ -180,6 +180,8 @@ pub struct WatchStats {
     pub watch_percentage: String,
     pub start_date: DateTime<FixedOffset>,
     pub end_date: DateTime<FixedOffset>,
+    /// Runtime in minutes from Trakt (None if unavailable, using session times as fallback).
+    pub runtime_minutes: Option<u16>,
 }
 
 /// Result of polling for a device token.
@@ -789,14 +791,19 @@ pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {
     let start_date = DateTime::parse_from_rfc3339(&trakt_response.started_at).unwrap();
     let end_date = DateTime::parse_from_rfc3339(&trakt_response.expires_at).unwrap();
 
-    let (start_date, end_date) = match extract_runtime_minutes(trakt_response) {
-        Some(runtime_minutes) => {
-            let duration = chrono::Duration::minutes(runtime_minutes);
+    let runtime_minutes = extract_runtime_minutes(trakt_response);
+    let (start_date, end_date) = match runtime_minutes {
+        Some(minutes) => {
+            let duration = chrono::Duration::minutes(i64::from(minutes));
             (end_date - duration, end_date)
         }
-        None => (start_date, end_date),
+        None => {
+            tracing::trace!("No runtime available, using Trakt session times as fallback");
+            (start_date, end_date)
+        }
     };
 
+    // Prevent division by zero if dates are somehow equal
     let total_seconds = end_date
         .signed_duration_since(start_date)
         .num_seconds()
@@ -809,10 +816,11 @@ pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {
         watch_percentage,
         start_date,
         end_date,
+        runtime_minutes,
     }
 }
 
-fn extract_runtime_minutes(trakt_response: &TraktWatchingResponse) -> Option<i64> {
+fn extract_runtime_minutes(trakt_response: &TraktWatchingResponse) -> Option<u16> {
     let minutes = match trakt_response.r#type.as_str() {
         "movie" => trakt_response
             .movie
@@ -826,14 +834,7 @@ fn extract_runtime_minutes(trakt_response: &TraktWatchingResponse) -> Option<i64
         _ => None,
     };
 
-    minutes.and_then(|value| {
-        let value = value as i64;
-        if value > 0 {
-            Some(value)
-        } else {
-            None
-        }
-    })
+    minutes.filter(|&value| value > 0)
 }
 
 pub enum MediaType {
