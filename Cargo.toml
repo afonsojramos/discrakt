@@ -19,7 +19,7 @@ thiserror = "2"
 backon = "1.6"
 serde_json = "1.0"
 chrono = "0.4.43"
-webbrowser = "1.0.6"
+webbrowser = "1.1.0"
 dirs = "6.0.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 dark-light = "2.0"
