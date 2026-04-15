@@ -30,8 +30,13 @@ jobs:
           sudo apt update
           sudo apt install -y libgtk-3-dev libappindicator3-dev libxdo-dev desktop-file-utils
 
-      - name: Install packaging tools
-        run: cargo install cargo-deb cargo-generate-rpm
+      - name: Install cargo-deb (prebuilt)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb
+
+      - name: Install cargo-generate-rpm
+        run: cargo install cargo-generate-rpm
 
       - name: Build amd64
         run: cargo build --release
