@@ -2,6 +2,7 @@
 name = "discrakt"
 version = "0.0.0"
 edition = "2021"
+rust-version = "1.88"
 authors = ["afonsojramos"]
 description = "Easy to Use Trakt/Plex Discord Rich Presence"
 repository = "https://github.com/afonsojramos/discrakt"
