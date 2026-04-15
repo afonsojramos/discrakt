@@ -17,7 +17,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache APT packages
-        uses: awalsh128/cache-apt-pkgs-action@latest
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.0
         with:
           packages: libgtk-3-dev libappindicator3-dev libxdo-dev
           version: 1.0
