@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/afonsojramos/discrakt/actions/workflows/main.yml"><img src="https://github.com/afonsojramos/discrakt/actions/workflows/build.yml/badge.svg"></a>
   <a href="https://deps.rs/repo/github/afonsojramos/discrakt"><img src="https://deps.rs/repo/github/afonsojramos/discrakt/status.svg"></a>
-  <a href="https://github.com/afonsojramos/discrakt/"><img src="https://img.shields.io/badge/rustc-1.58-blue.svg"></a>
+  <a href="https://github.com/afonsojramos/discrakt/"><img src="https://img.shields.io/badge/rustc-1.88-blue.svg"></a>
   <a href="https://github.com/afonsojramos/discrakt/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
@@ -20,6 +20,7 @@ A simple app that acts as a bridge between [Discord](https://discord.com/) and [
 **How it works**: Discrakt polls your Trakt.tv account for "currently watching" status and displays it on Discord. For this to work, **your streaming app must scrobble to Trakt** — meaning it reports what you're watching to Trakt in real-time.
 
 Popular apps with Trakt integration include:
+
 - **Stremio** — Enable the [Trakt addon](https://www.stremio.com/addons) in Settings → Addons
 - **Plex** — Use the [Plex-Trakt-Scrobbler](https://github.com/trakt/Plex-Trakt-Scrobbler) plugin
 - **Kodi**, **Infuse**, **VLC** and [many more](https://trakt.tv/apps)
@@ -29,7 +30,7 @@ Once your app is scrobbling to Trakt, Discrakt will display your watch status on
 ## Features
 
 - 🌐 **Multilingual support** (Automatic system detection & Tray menu selection)
-  - *Localized titles for movies and episodes are fetched via TMDB.*
+  - _Localized titles for movies and episodes are fetched via TMDB._
 - Separate Discord Rich Presence apps for Movies and TV Shows
 - Movie posters and show artwork displayed via TMDB
 - Direct links to IMDB and Trakt pages
@@ -51,7 +52,7 @@ Plex Rich Presence alternatives:
 
 A default Trakt Client ID is provided, so you don't need to create your own API application.
 
-*Note: Discord needs to be running on the same machine as Discrakt.*
+_Note: Discord needs to be running on the same machine as Discrakt._
 
 <details>
 <summary><strong>Advanced: Manual Configuration</strong></summary>
@@ -62,11 +63,11 @@ If you prefer to configure manually or use your own Trakt API application:
 2. Create a `credentials.ini` file with your settings
 3. Place it in one of these locations:
 
-|Operating System|Location|Example|
-|--------|-----|-------|
-|Linux|`$XDG_CONFIG_HOME`/discrakt or `$HOME`/.config/discrakt|/home/alice/.config/discrakt/credentials.ini|
-|macOS|`$HOME`/Library/Application Support/discrakt|/Users/Alice/Library/Application Support/discrakt/credentials.ini|
-|Windows|`%APPDATA%`\discrakt|C:\Users\Alice\AppData\Roaming\discrakt\credentials.ini|
+| Operating System | Location                                                | Example                                                           |
+| ---------------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
+| Linux            | `$XDG_CONFIG_HOME`/discrakt or `$HOME`/.config/discrakt | /home/alice/.config/discrakt/credentials.ini                      |
+| macOS            | `$HOME`/Library/Application Support/discrakt            | /Users/Alice/Library/Application Support/discrakt/credentials.ini |
+| Windows          | `%APPDATA%`\discrakt                                    | C:\Users\Alice\AppData\Roaming\discrakt\credentials.ini           |
 
 </details>
 
@@ -96,6 +97,7 @@ winget install afonsojramos.discrakt
 ```
 
 #### Scoop
+
 ```powershell
 scoop bucket add extras
 scoop install discrakt
