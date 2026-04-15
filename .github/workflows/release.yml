@@ -22,6 +22,9 @@ jobs:
         with:
           targets: "aarch64-unknown-linux-gnu, x86_64-unknown-linux-musl"
 
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
       - name: Install system dependencies
         run: |
           sudo apt update
@@ -135,6 +138,9 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
       - name: Install WiX Toolset v6
         run: dotnet tool install --global wix --version 6.0.2
 
@@ -189,16 +195,8 @@ jobs:
         with:
           targets: "aarch64-apple-darwin, x86_64-apple-darwin"
 
-      - name: Cache cargo
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
 
       - name: Extract version
         id: version
