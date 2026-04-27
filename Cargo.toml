@@ -38,7 +38,7 @@ percent-encoding = "2.3"
 # - Linux: ksni for native KDE/freedesktop StatusNotifierItem support
 # - Windows/macOS: tray-icon crate
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-tray-icon = "0.21"
+tray-icon = "0.22"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = { version = "0.3", default-features = false, features = ["blocking", "async-io"] }
