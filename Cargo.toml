@@ -48,7 +48,7 @@ objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winreg = "0.55"
+winreg = "0.56"
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winresource = "0.1.31"
