@@ -57,7 +57,7 @@ _Note: Discord needs to be running on the same machine as Discrakt._
 <details>
 <summary><strong>Advanced: Manual Configuration</strong></summary>
 
-If you prefer to configure manually or use your own Trakt API application:
+Discrakt creates `credentials.ini` for you during the setup wizard, so this file is **not** included in releases — you don't need to download it. Only follow these steps if you want to use your own Trakt API application:
 
 1. Create an API Application on [Trakt.tv](https://trakt.tv/oauth/applications/new) (with scrobble capabilities and `urn:ietf:wg:oauth:2.0:oob` as the redirect uri)
 2. Create a `credentials.ini` file with your settings
