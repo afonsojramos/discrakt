@@ -14,7 +14,7 @@ exclude = [".github/*", "docs/*.psd", "credentials.ini", ".gitignore"]
 [dependencies]
 discord-rich-presence = "1.1.0"
 ureq = { version = "3", features = ["json"] }
-configparser = { version = "3.1.0", features = ["indexmap"] }
+configparser = { version = "3.2.0", features = ["indexmap"] }
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2"
 backon = "1.6"
