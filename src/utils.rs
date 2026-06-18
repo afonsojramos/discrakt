@@ -165,13 +165,29 @@ pub struct TraktAccessToken {
 
 use crate::source::Watching;
 
+/// Which tracking source Discrakt polls for "currently watching" status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SourceKind {
+    #[default]
+    Trakt,
+    Plex,
+}
+
 pub struct Env {
+    /// The selected tracking source.
+    pub source: SourceKind,
     pub trakt_username: String,
     pub trakt_client_id: String,
     pub trakt_oauth_enabled: bool,
     pub trakt_access_token: Option<String>,
     pub trakt_refresh_token: Option<String>,
     pub trakt_refresh_token_expires_at: Option<u64>,
+    /// Base URL of the Plex Media Server (Plex source only).
+    pub plex_server_url: String,
+    /// Plex authentication token (Plex source only).
+    pub plex_token: String,
+    /// Plex account username to mirror (Plex source only).
+    pub plex_username: String,
     pub tmdb_token: String,
     pub tmdb_language: String,
 }
@@ -618,6 +634,31 @@ fn run_browser_setup() -> Result<setup::SetupResult, String> {
     }
 }
 
+/// Reads Plex settings (server URL, token, username) from a loaded config.
+fn read_plex_config(config: &Ini) -> (String, String, String) {
+    (
+        config.get("Plex", "serverUrl").unwrap_or_default(),
+        config.get("Plex", "token").unwrap_or_default(),
+        config.get("Plex", "username").unwrap_or_default(),
+    )
+}
+
+/// Determines the active source, honoring an explicit `[Discrakt] source`
+/// override and otherwise falling back to whichever source is configured.
+fn determine_source(config: &Ini, trakt_configured: bool, plex_configured: bool) -> SourceKind {
+    match config
+        .get("Discrakt", "source")
+        .map(|s| s.trim().to_lowercase())
+        .as_deref()
+    {
+        Some("plex") => SourceKind::Plex,
+        Some("trakt") => SourceKind::Trakt,
+        // No explicit choice: prefer Plex only when it is the only one configured.
+        _ if plex_configured && !trakt_configured => SourceKind::Plex,
+        _ => SourceKind::Trakt,
+    }
+}
+
 /// Load configuration from the credentials file.
 ///
 /// # Errors
@@ -630,72 +671,37 @@ pub fn load_config() -> Result<Env, String> {
     let mut config = Ini::new();
     let config_file = find_config_file();
 
-    // Check if we need to run browser-based setup
-    // Only trakt_username is strictly required; trakt_client_id has a default
-    let needs_setup = match &config_file {
-        None => true,
-        Some(path) => {
-            if config.load(path).is_err() {
-                true
-            } else {
-                let trakt_username = config.get("Trakt API", "traktUser");
-                trakt_username.as_ref().is_none_or(|s| s.is_empty())
-            }
-        }
+    // Setup is needed only when neither a Trakt nor a Plex source is configured.
+    let loaded = match &config_file {
+        Some(path) => config.load(path).is_ok(),
+        None => false,
     };
+    let trakt_configured = loaded
+        && config
+            .get("Trakt API", "traktUser")
+            .is_some_and(|s| !s.is_empty());
+    let (server_url, token, _username) = if loaded {
+        read_plex_config(&config)
+    } else {
+        Default::default()
+    };
+    let plex_configured = !server_url.is_empty() && !token.is_empty();
 
-    if needs_setup {
+    if !trakt_configured && !plex_configured {
         tracing::info!("Credentials missing or incomplete, starting browser setup");
 
-        // Run browser-based setup
-        let setup_result = run_browser_setup()?;
-
-        // Re-read the config file after setup
+        // Run browser-based setup, then re-read the config it wrote.
+        run_browser_setup()?;
         let config_path =
             find_config_file().ok_or_else(|| "Config file should exist after setup".to_string())?;
+        config = Ini::new();
         config
             .load(&config_path)
             .map_err(|e| format!("Failed to load credentials.ini after setup: {}", e))?;
-
-        // Return config using setup result values (they're authoritative)
-        // Use default Trakt Client ID if setup result has empty value
-        let trakt_client_id = if setup_result.trakt_client_id.is_empty() {
-            DEFAULT_TRAKT_CLIENT_ID.to_string()
-        } else {
-            setup_result.trakt_client_id
-        };
-
-        let tmdb_language = config
-            .get("Trakt API", "language")
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(detect_system_language);
-
-        return Ok(Env {
-            trakt_username: setup_result.trakt_username,
-            trakt_client_id,
-            trakt_oauth_enabled: config
-                .getbool("Trakt API", "enabledOAuth")
-                .unwrap_or(Some(false))
-                .unwrap_or(false),
-            trakt_access_token: config.get("Trakt API", "OAuthAccessToken"),
-            trakt_refresh_token: config.get("Trakt API", "OAuthRefreshToken"),
-            trakt_refresh_token_expires_at: config
-                .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
-                .unwrap_or_default(),
-            tmdb_token: DEFAULT_TMDB_TOKEN.to_string(),
-            tmdb_language,
-        });
     }
 
-    // Config file exists and has required fields
-    let path = config_file.unwrap();
-    config
-        .load(&path)
-        .map_err(|e| format!("Failed to load credentials.ini: {}", e))?;
-
-    let trakt_username = config
-        .get("Trakt API", "traktUser")
-        .ok_or_else(|| "traktUser not found in config".to_string())?;
+    let (plex_server_url, plex_token, plex_username) = read_plex_config(&config);
+    let trakt_username = config.get("Trakt API", "traktUser").unwrap_or_default();
 
     // Use default Trakt Client ID if not provided or empty
     let trakt_client_id = config
@@ -708,7 +714,14 @@ pub fn load_config() -> Result<Env, String> {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(detect_system_language);
 
+    let source = determine_source(
+        &config,
+        !trakt_username.is_empty(),
+        !plex_server_url.is_empty() && !plex_token.is_empty(),
+    );
+
     Ok(Env {
+        source,
         trakt_username,
         trakt_client_id,
         trakt_oauth_enabled: config
@@ -720,6 +733,9 @@ pub fn load_config() -> Result<Env, String> {
         trakt_refresh_token_expires_at: config
             .getuint("Trakt API", "OAuthRefreshTokenExpiresAt")
             .unwrap_or_default(),
+        plex_server_url,
+        plex_token,
+        plex_username,
         tmdb_token: DEFAULT_TMDB_TOKEN.to_string(),
         tmdb_language,
     })
@@ -877,5 +893,61 @@ pub fn save_language_preference(language: &str) {
         }
     } else {
         tracing::error!("Failed to save language preference: config file not found");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{determine_source, read_plex_config, SourceKind};
+    use configparser::ini::Ini;
+
+    fn parse(contents: &str) -> Ini {
+        let mut config = Ini::new();
+        config.read(contents.to_string()).expect("valid ini");
+        config
+    }
+
+    #[test]
+    fn determine_source_defaults_to_trakt() {
+        let config = parse("[Trakt API]\ntraktUser=alice\n");
+        assert_eq!(determine_source(&config, true, false), SourceKind::Trakt);
+    }
+
+    #[test]
+    fn determine_source_uses_plex_when_only_plex_configured() {
+        let config = parse("[Plex]\nserverUrl=http://host:32400\ntoken=abc\n");
+        assert_eq!(determine_source(&config, false, true), SourceKind::Plex);
+    }
+
+    #[test]
+    fn determine_source_honors_explicit_override() {
+        let config = parse("[Discrakt]\nsource=plex\n[Trakt API]\ntraktUser=alice\n");
+        // Both configured, but the explicit override wins.
+        assert_eq!(determine_source(&config, true, true), SourceKind::Plex);
+
+        let config = parse("[Discrakt]\nsource=trakt\n[Plex]\nserverUrl=http://h\ntoken=t\n");
+        assert_eq!(determine_source(&config, false, true), SourceKind::Trakt);
+    }
+
+    #[test]
+    fn read_plex_config_reads_all_fields() {
+        let config = parse("[Plex]\nserverUrl=http://host:32400\ntoken=abc\nusername=alice\n");
+        assert_eq!(
+            read_plex_config(&config),
+            (
+                "http://host:32400".to_string(),
+                "abc".to_string(),
+                "alice".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn read_plex_config_defaults_to_empty() {
+        let config = parse("[Trakt API]\ntraktUser=alice\n");
+        assert_eq!(
+            read_plex_config(&config),
+            (String::new(), String::new(), String::new())
+        );
     }
 }

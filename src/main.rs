@@ -8,11 +8,15 @@ use chrono::Utc;
 use discrakt::{
     autostart,
     discord::Discord,
-    source::{trakt::TraktSource, MediaKind, Source},
+    source::{
+        plex::{PlexConfig, PlexSource},
+        trakt::TraktSource,
+        MediaKind, Source,
+    },
     state::AppState,
     trakt::Trakt,
     tray::{Tray, TrayCommand},
-    utils::{get_watch_stats, load_config, log_dir_path, DEFAULT_DISCORD_APP_ID},
+    utils::{get_watch_stats, load_config, log_dir_path, SourceKind, DEFAULT_DISCORD_APP_ID},
 };
 use std::{
     env, process,
@@ -357,7 +361,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::error!("Failed to load configuration: {}", e);
         e
     })?;
-    cfg.check_oauth();
+    // OAuth applies to the Trakt source only.
+    if cfg.source == SourceKind::Trakt {
+        cfg.check_oauth();
+    }
 
     let app_state = AppState::new();
     let should_quit = Arc::new(AtomicBool::new(false));
@@ -365,17 +372,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_state_clone = Arc::clone(&app_state);
     let should_quit_clone = Arc::clone(&should_quit);
 
+    let source_kind = cfg.source;
     let trakt_client_id = cfg.trakt_client_id.clone();
     let trakt_username = cfg.trakt_username.clone();
     let trakt_access_token = cfg.trakt_access_token.clone();
+    let plex_server_url = cfg.plex_server_url.clone();
+    let plex_token = cfg.plex_token.clone();
+    let plex_username = cfg.plex_username.clone();
     let tmdb_token = cfg.tmdb_token.clone();
     let tmdb_language = cfg.tmdb_language.clone();
 
     // Spawn background polling thread
     let polling_handle = thread::spawn(move || {
         let mut discord = Discord::new(DEFAULT_DISCORD_APP_ID.to_string());
-        let trakt = Trakt::new(trakt_client_id, trakt_username, trakt_access_token);
-        let mut source: Box<dyn Source> = Box::new(TraktSource::new(trakt, tmdb_token));
+        let mut source: Box<dyn Source> = match source_kind {
+            SourceKind::Trakt => {
+                let trakt = Trakt::new(trakt_client_id, trakt_username, trakt_access_token);
+                Box::new(TraktSource::new(trakt, tmdb_token))
+            }
+            SourceKind::Plex => Box::new(PlexSource::new(PlexConfig {
+                server_url: plex_server_url,
+                token: plex_token,
+                username: plex_username,
+                tmdb_token,
+                tmdb_base_url: None,
+                language: None,
+            })),
+        };
         source.set_language(tmdb_language);
 
         discord.connect();
