@@ -14,13 +14,13 @@ exclude = [".github/*", "docs/*.psd", "credentials.ini", ".gitignore"]
 [dependencies]
 discord-rich-presence = "1.1.0"
 ureq = { version = "3", features = ["json"] }
-configparser = { version = "3.1.0", features = ["indexmap"] }
+configparser = { version = "3.2.0", features = ["indexmap"] }
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2"
 backon = "1.6"
 serde_json = "1.0"
-chrono = "0.4.43"
-webbrowser = "1.1.0"
+chrono = "0.4.45"
+webbrowser = "1.2.1"
 dirs = "6.0.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 dark-light = "2.0"
@@ -31,14 +31,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 tiny_http = "0.12"
 sys-locale = "0.3"
-lru = "0.17"
+lru = "0.18"
 percent-encoding = "2.3"
 
 # Platform-specific tray dependencies:
 # - Linux: ksni for native KDE/freedesktop StatusNotifierItem support
 # - Windows/macOS: tray-icon crate
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-tray-icon = "0.22"
+tray-icon = "0.24"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = { version = "0.3", default-features = false, features = ["blocking", "async-io"] }
@@ -56,7 +56,7 @@ winresource = "0.1.31"
 [dev-dependencies]
 mockito = "1.7"
 tempfile = "3.27"
-serial_test = "3.4"
+serial_test = "3.5"
 
 [profile.release]
 strip = "debuginfo"
