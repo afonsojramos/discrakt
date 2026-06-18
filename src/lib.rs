@@ -1,7 +1,9 @@
 pub mod autostart;
 pub mod discord;
+pub mod metadata;
 pub mod retry;
 pub mod setup;
+pub mod source;
 pub mod state;
 pub mod trakt;
 pub mod utils;

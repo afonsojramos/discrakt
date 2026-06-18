@@ -3,7 +3,7 @@
 mod common;
 
 use chrono::{DateTime, Duration};
-use discrakt::trakt::TraktWatchingResponse;
+use common::watching::{episode_watching, movie_watching};
 #[cfg(target_os = "macos")]
 use discrakt::utils::is_light_mode;
 use discrakt::utils::{
@@ -57,24 +57,17 @@ fn test_media_type_show_as_str() {
 
 #[test]
 fn test_get_watch_stats_calculation() {
-    // Create a response with known timestamps
-    // Started at 10:00, expires at 12:00 (2 hours)
-    let response: TraktWatchingResponse =
-        serde_json::from_str(common::fixtures::TRAKT_MOVIE_WATCHING).unwrap();
+    // Movie window: started at 10:00, expires at 12:30.
+    let stats = get_watch_stats(&movie_watching());
 
-    let stats = get_watch_stats(&response);
-
-    // The percentage depends on current time, but we can verify the dates are parsed
+    // The percentage depends on current time, but we can verify it is formatted.
     assert!(!stats.watch_percentage.is_empty());
     assert!(stats.watch_percentage.ends_with('%'));
 }
 
 #[test]
 fn test_get_watch_stats_dates_parsed() {
-    let response: TraktWatchingResponse =
-        serde_json::from_str(common::fixtures::TRAKT_MOVIE_WATCHING).unwrap();
-
-    let stats = get_watch_stats(&response);
+    let stats = get_watch_stats(&movie_watching());
 
     // Verify dates are valid (not default)
     assert!(stats.start_date.timestamp() > 0);
@@ -83,10 +76,15 @@ fn test_get_watch_stats_dates_parsed() {
 
 #[test]
 fn test_get_watch_stats_uses_runtime_over_stale_start() {
-    let response: TraktWatchingResponse =
-        serde_json::from_str(common::fixtures::TRAKT_EPISODE_WATCHING_STALE_START).unwrap();
+    // Stale session start (08:00) should be ignored in favour of the runtime window.
+    let mut watching = episode_watching();
+    watching.started_at =
+        DateTime::parse_from_rfc3339("2024-01-15T08:00:00.000Z").expect("valid start");
+    watching.expires_at =
+        DateTime::parse_from_rfc3339("2024-01-15T11:00:00.000Z").expect("valid end");
+    watching.runtime_minutes = Some(44);
 
-    let stats = get_watch_stats(&response);
+    let stats = get_watch_stats(&watching);
 
     let end_date =
         DateTime::parse_from_rfc3339("2024-01-15T11:00:00.000Z").expect("valid end date");
@@ -99,11 +97,10 @@ fn test_get_watch_stats_uses_runtime_over_stale_start() {
 
 #[test]
 fn test_get_watch_stats_movie_with_runtime() {
-    // Movie fixture has runtime: 150
-    let response: TraktWatchingResponse =
-        serde_json::from_str(common::fixtures::TRAKT_MOVIE_WATCHING).unwrap();
+    let mut watching = movie_watching();
+    watching.runtime_minutes = Some(150);
 
-    let stats = get_watch_stats(&response);
+    let stats = get_watch_stats(&watching);
 
     let end_date =
         DateTime::parse_from_rfc3339("2024-01-15T12:30:00.000Z").expect("valid end date");

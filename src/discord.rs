@@ -4,85 +4,86 @@ use discord_rich_presence::{
 };
 use std::{thread::sleep, time::Duration};
 
-use crate::{
-    trakt::{Trakt, TraktWatchingResponse},
-    utils::{
-        get_watch_stats, MediaType, DEFAULT_DISCORD_APP_ID_MOVIE, DEFAULT_DISCORD_APP_ID_SHOW,
-    },
-};
+use crate::source::{MediaKind, Watching};
+use crate::utils::{get_watch_stats, DEFAULT_DISCORD_APP_ID_MOVIE, DEFAULT_DISCORD_APP_ID_SHOW};
 
 pub struct Discord {
     client: DiscordIpcClient,
     current_app_id: String,
 }
 
-/// Payload data for Discord Rich Presence.
+/// Display data for Discord Rich Presence, derived purely from a [`Watching`].
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Payload {
     pub details: String,
     pub state: String,
+    /// Media category: `movies` or `shows`.
     pub media: String,
-    pub link_imdb: String,
-    pub link_trakt: String,
-    pub img_url: String,
-    pub watch_percentage: String,
+    /// Large image: a resolved poster URL, or the media category as a fallback.
+    pub large_image: String,
+    /// Rich Presence buttons as `(label, url)` pairs.
+    pub buttons: Vec<(String, String)>,
 }
 
-/// Build payload data from a Trakt watching response.
+/// Builds Discord display data from a source-agnostic [`Watching`].
 ///
-/// This function extracts the display information from a Trakt response
-/// and formats it for Discord Rich Presence.
-///
-/// # Arguments
-/// * `trakt_response` - The Trakt API response for what's currently being watched
-/// * `movie_rating` - The movie rating (only used for movie type)
-///
-/// # Returns
-/// * `Some(Payload)` - The payload data if the media type is recognized
-/// * `None` - If the media type is unknown
-pub fn build_payload(trakt_response: &TraktWatchingResponse, movie_rating: f64) -> Option<Payload> {
-    let mut payload = Payload::default();
+/// All localization and artwork resolution has already been done by the source,
+/// so this is pure formatting: no network calls, no source-specific logic.
+pub fn build_payload(watching: &Watching) -> Payload {
+    let media = match watching.kind {
+        MediaKind::Movie => "movies",
+        MediaKind::Episode => "shows",
+    }
+    .to_string();
 
-    match trakt_response.r#type.as_str() {
-        "movie" => {
-            let movie = trakt_response.movie.as_ref()?;
-            payload.details = format!("{} ({})", movie.title, movie.year);
-            payload.state = format!("{:.1} stars", movie_rating);
-            payload.media = String::from("movies");
-            payload.link_imdb = format!("https://www.imdb.com/title/{}", movie.ids.imdb.as_ref()?);
-            payload.link_trakt = format!(
-                "https://trakt.tv/{}/{}",
-                payload.media,
-                movie.ids.slug.as_ref()?
-            );
-            Some(payload)
+    let (details, state) = match watching.kind {
+        MediaKind::Movie => {
+            let details = match watching.year {
+                Some(year) => format!("{} ({})", watching.title, year),
+                None => watching.title.clone(),
+            };
+            let state = match watching.rating {
+                Some(rating) => format!("{:.1} ⭐️", rating),
+                None => String::new(),
+            };
+            (details, state)
         }
-        "episode" => {
-            let episode = trakt_response.episode.as_ref()?;
-            let show = trakt_response.show.as_ref()?;
-            payload.details = show.title.to_string();
-            payload.state = format!(
+        MediaKind::Episode => {
+            let details = watching.title.clone();
+            let state = format!(
                 "S{:02}E{:02} - {}",
-                episode.season, episode.number, episode.title
+                watching.season.unwrap_or(0),
+                watching.episode_number.unwrap_or(0),
+                watching.episode_title.as_deref().unwrap_or("")
             );
-            payload.media = String::from("shows");
-            payload.link_imdb = format!("https://www.imdb.com/title/{}", show.ids.imdb.as_ref()?);
-            payload.link_trakt = format!(
-                "https://trakt.tv/{}/{}",
-                payload.media,
-                show.ids.slug.as_ref()?
-            );
-            Some(payload)
+            (details, state)
         }
-        _ => None,
+    };
+
+    let large_image = watching.poster_url.clone().unwrap_or_else(|| media.clone());
+
+    let mut buttons = Vec::new();
+    if let Some(imdb_url) = &watching.imdb_url {
+        buttons.push(("IMDB".to_string(), imdb_url.clone()));
+    }
+    if let Some((label, url)) = &watching.source_link {
+        buttons.push((label.clone(), url.clone()));
+    }
+
+    Payload {
+        details,
+        state,
+        media,
+        large_image,
+        buttons,
     }
 }
 
-/// Get the appropriate Discord app ID for a media type.
-pub fn get_app_id_for_media_type(media_type: &str) -> &'static str {
-    match media_type {
-        "episode" => DEFAULT_DISCORD_APP_ID_SHOW,
-        _ => DEFAULT_DISCORD_APP_ID_MOVIE,
+/// Returns the appropriate Discord application ID for a media kind.
+pub fn app_id_for_kind(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Episode => DEFAULT_DISCORD_APP_ID_SHOW,
+        MediaKind::Movie => DEFAULT_DISCORD_APP_ID_MOVIE,
     }
 }
 
@@ -133,136 +134,27 @@ impl Discord {
         let _ = self.client.close();
     }
 
-    pub fn set_activity(
-        &mut self,
-        trakt_response: &TraktWatchingResponse,
-        trakt: &mut Trakt,
-        tmdb_token: String,
-    ) {
-        let mut payload_data = Payload::default();
+    pub fn set_activity(&mut self, watching: &Watching) {
+        // Switch to the appropriate Discord app ID based on media kind.
+        self.switch_app_id(app_id_for_kind(watching.kind));
 
-        // Switch to appropriate Discord app ID based on media type
-        let target_app_id = match trakt_response.r#type.as_str() {
-            "episode" => DEFAULT_DISCORD_APP_ID_SHOW,
-            _ => DEFAULT_DISCORD_APP_ID_MOVIE, // Default to movie for unknown types (including "movie")
-        };
-        self.switch_app_id(target_app_id);
+        let payload = build_payload(watching);
+        let watch_time = get_watch_stats(watching);
 
-        let img_url = match trakt_response.r#type.as_str() {
-            "movie" => {
-                let movie = trakt_response.movie.as_ref().unwrap();
-                payload_data.details = format!("{} ({})", movie.title, movie.year);
-                payload_data.state = format!(
-                    "{:.1} ⭐️",
-                    Trakt::get_movie_rating(trakt, movie.ids.slug.as_ref().unwrap().to_string())
-                );
-                payload_data.media = String::from("movies");
-                payload_data.link_imdb = format!(
-                    "https://www.imdb.com/title/{}",
-                    movie.ids.imdb.as_ref().unwrap()
-                );
-                payload_data.link_trakt = format!(
-                    "https://trakt.tv/{}/{}",
-                    payload_data.media,
-                    movie.ids.slug.as_ref().unwrap()
-                );
-                let id_tmdb = movie.ids.tmdb.as_ref().unwrap();
+        let buttons: Vec<Button> = payload
+            .buttons
+            .iter()
+            .map(|(label, url)| Button::new(label, url))
+            .collect();
 
-                trakt.get_poster(MediaType::Movie, id_tmdb.to_string(), tmdb_token.clone(), 0)
-            }
-            "episode" if trakt_response.episode.is_some() => {
-                let episode = trakt_response.episode.as_ref().unwrap();
-                let show = trakt_response.show.as_ref().unwrap();
-                payload_data.details = show.title.to_string();
-                payload_data.state = format!(
-                    "S{:02}E{:02} - {}",
-                    episode.season, episode.number, episode.title
-                );
-                payload_data.media = String::from("shows");
-                payload_data.link_imdb = format!(
-                    "https://www.imdb.com/title/{}",
-                    show.ids.imdb.as_ref().unwrap()
-                );
-                payload_data.link_trakt = format!(
-                    "https://trakt.tv/{}/{}",
-                    payload_data.media,
-                    show.ids.slug.as_ref().unwrap()
-                );
-                let id_tmdb = show.ids.tmdb.as_ref().unwrap();
-
-                trakt.get_poster(
-                    MediaType::Show,
-                    id_tmdb.to_string(),
-                    tmdb_token.clone(),
-                    episode.season,
-                )
-            }
-            _ => {
-                tracing::warn!("Unknown media type: {}", trakt_response.r#type);
-                return;
-            }
-        };
-
-        if let Some(movie) = &trakt_response.movie {
-            if let Some(tmdb_id) = movie.ids.tmdb {
-                let translated = trakt.get_title(
-                    MediaType::Movie,
-                    tmdb_id.to_string(),
-                    &tmdb_token,
-                    None,
-                    None,
-                );
-                if !translated.is_empty() {
-                    payload_data.details = format!("{} ({})", translated, movie.year);
-                }
-            }
-        } else if let Some(show) = &trakt_response.show {
-            if let Some(tmdb_id) = show.ids.tmdb {
-                let show_title = trakt.get_title(
-                    MediaType::Show,
-                    tmdb_id.to_string(),
-                    &tmdb_token,
-                    None,
-                    None,
-                );
-                if !show_title.is_empty() {
-                    payload_data.details = show_title;
-                }
-
-                if let Some(episode) = &trakt_response.episode {
-                    let ep_title = trakt.get_title(
-                        MediaType::Show,
-                        tmdb_id.to_string(),
-                        &tmdb_token,
-                        Some(episode.season),
-                        Some(episode.number),
-                    );
-
-                    if !ep_title.is_empty() {
-                        payload_data.state = format!(
-                            "S{:02}E{:02} - {}",
-                            episode.season, episode.number, ep_title
-                        );
-                    }
-                }
-            }
-        }
-
-        let img = match img_url {
-            Some(img) => img,
-            None => payload_data.media.to_string(),
-        };
-
-        let watch_time = get_watch_stats(trakt_response);
-
-        let payload = Activity::new()
-            .details(&payload_data.details)
-            .state(&payload_data.state)
+        let mut activity = Activity::new()
+            .details(&payload.details)
+            .state(&payload.state)
             .activity_type(ActivityType::Watching)
             .status_display_type(StatusDisplayType::Details)
             .assets(
                 Assets::new()
-                    .large_image(&img)
+                    .large_image(&payload.large_image)
                     .small_image("trakt")
                     .small_text("Discrakt"),
             )
@@ -270,20 +162,20 @@ impl Discord {
                 Timestamps::new()
                     .start(watch_time.start_date.timestamp())
                     .end(watch_time.end_date.timestamp()),
-            )
-            .buttons(vec![
-                Button::new("IMDB", &payload_data.link_imdb),
-                Button::new("Trakt", &payload_data.link_trakt),
-            ]);
+            );
+
+        if !buttons.is_empty() {
+            activity = activity.buttons(buttons);
+        }
 
         tracing::info!(
-            details = %payload_data.details,
-            state = %payload_data.state,
+            details = %payload.details,
+            state = %payload.state,
             progress = %watch_time.watch_percentage,
             "Now playing"
         );
 
-        if self.client.set_activity(payload).is_err() {
+        if self.client.set_activity(activity).is_err() {
             self.connect();
         }
     }

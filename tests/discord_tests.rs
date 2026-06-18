@@ -2,8 +2,9 @@
 
 mod common;
 
-use discrakt::discord::{build_payload, get_app_id_for_media_type, Payload};
-use discrakt::trakt::{TraktEpisode, TraktIds, TraktMovie, TraktShow, TraktWatchingResponse};
+use common::watching::{episode_watching, movie_watching};
+use discrakt::discord::{app_id_for_kind, build_payload, Payload};
+use discrakt::source::MediaKind;
 use discrakt::utils::{DEFAULT_DISCORD_APP_ID_MOVIE, DEFAULT_DISCORD_APP_ID_SHOW};
 
 // ============================================================================
@@ -17,10 +18,8 @@ fn test_payload_default() {
     assert_eq!(payload.details, "");
     assert_eq!(payload.state, "");
     assert_eq!(payload.media, "");
-    assert_eq!(payload.link_imdb, "");
-    assert_eq!(payload.link_trakt, "");
-    assert_eq!(payload.img_url, "");
-    assert_eq!(payload.watch_percentage, "");
+    assert_eq!(payload.large_image, "");
+    assert!(payload.buttons.is_empty());
 }
 
 #[test]
@@ -29,16 +28,15 @@ fn test_payload_clone() {
         details: "Test Details".to_string(),
         state: "Test State".to_string(),
         media: "movies".to_string(),
-        link_imdb: "https://imdb.com/test".to_string(),
-        link_trakt: "https://trakt.tv/test".to_string(),
-        img_url: "https://image.test/img.jpg".to_string(),
-        watch_percentage: "50%".to_string(),
+        large_image: "https://image.test/img.jpg".to_string(),
+        buttons: vec![("IMDB".to_string(), "https://imdb.com/test".to_string())],
     };
 
     let cloned = payload.clone();
     assert_eq!(cloned.details, payload.details);
     assert_eq!(cloned.state, payload.state);
     assert_eq!(cloned.media, payload.media);
+    assert_eq!(cloned.buttons, payload.buttons);
 }
 
 #[test]
@@ -54,208 +52,134 @@ fn test_payload_debug() {
 // Build Payload Tests - Movie
 // ============================================================================
 
-fn create_movie_response() -> TraktWatchingResponse {
-    TraktWatchingResponse {
-        expires_at: "2024-01-15T12:30:00.000Z".to_string(),
-        started_at: "2024-01-15T10:00:00.000Z".to_string(),
-        action: "watching".to_string(),
-        r#type: "movie".to_string(),
-        movie: Some(TraktMovie {
-            title: "Inception".to_string(),
-            year: 2010,
-            ids: TraktIds {
-                trakt: 16662,
-                slug: Some("inception-2010".to_string()),
-                tvdb: None,
-                imdb: Some("tt1375666".to_string()),
-                tmdb: Some(27205),
-                tvrage: None,
-            },
-            runtime: None,
-        }),
-        show: None,
-        episode: None,
-    }
-}
-
 #[test]
 fn test_build_payload_movie() {
-    let response = create_movie_response();
+    let payload = build_payload(&movie_watching());
 
-    let payload = build_payload(&response, 8.5);
-
-    assert!(payload.is_some());
-    let p = payload.unwrap();
-    assert_eq!(p.details, "Inception (2010)");
-    assert_eq!(p.state, "8.5 stars");
-    assert_eq!(p.media, "movies");
+    assert_eq!(payload.details, "Inception (2010)");
+    assert_eq!(payload.state, "8.5 ⭐️");
+    assert_eq!(payload.media, "movies");
 }
 
 #[test]
-fn test_build_payload_movie_imdb_link() {
-    let response = create_movie_response();
+fn test_build_payload_movie_imdb_button() {
+    let payload = build_payload(&movie_watching());
 
-    let payload = build_payload(&response, 8.5).unwrap();
-
-    assert_eq!(payload.link_imdb, "https://www.imdb.com/title/tt1375666");
+    assert!(payload.buttons.contains(&(
+        "IMDB".to_string(),
+        "https://www.imdb.com/title/tt1375666".to_string()
+    )));
 }
 
 #[test]
-fn test_build_payload_movie_trakt_link() {
-    let response = create_movie_response();
+fn test_build_payload_movie_trakt_button() {
+    let payload = build_payload(&movie_watching());
 
-    let payload = build_payload(&response, 8.5).unwrap();
+    assert!(payload.buttons.contains(&(
+        "Trakt".to_string(),
+        "https://trakt.tv/movies/inception-2010".to_string()
+    )));
+}
 
-    assert_eq!(payload.link_trakt, "https://trakt.tv/movies/inception-2010");
+#[test]
+fn test_build_payload_movie_uses_resolved_poster() {
+    let payload = build_payload(&movie_watching());
+
+    assert_eq!(
+        payload.large_image,
+        "https://image.tmdb.org/t/p/w600_and_h600_bestv2/poster.jpg"
+    );
 }
 
 #[test]
 fn test_build_payload_movie_rating_formatting() {
-    let response = create_movie_response();
+    let mut watching = movie_watching();
 
-    // Test various rating values
-    let payload1 = build_payload(&response, 9.12345).unwrap();
-    assert_eq!(payload1.state, "9.1 stars");
+    watching.rating = Some(9.12345);
+    assert_eq!(build_payload(&watching).state, "9.1 ⭐️");
 
-    let payload2 = build_payload(&response, 7.0).unwrap();
-    assert_eq!(payload2.state, "7.0 stars");
+    watching.rating = Some(7.0);
+    assert_eq!(build_payload(&watching).state, "7.0 ⭐️");
+}
+
+#[test]
+fn test_build_payload_movie_without_rating_hides_state() {
+    let mut watching = movie_watching();
+    watching.rating = None;
+
+    assert_eq!(build_payload(&watching).state, "");
 }
 
 // ============================================================================
 // Build Payload Tests - Episode
 // ============================================================================
 
-fn create_episode_response() -> TraktWatchingResponse {
-    TraktWatchingResponse {
-        expires_at: "2024-01-15T11:00:00.000Z".to_string(),
-        started_at: "2024-01-15T10:00:00.000Z".to_string(),
-        action: "watching".to_string(),
-        r#type: "episode".to_string(),
-        movie: None,
-        show: Some(TraktShow {
-            title: "Breaking Bad".to_string(),
-            year: 2008,
-            ids: TraktIds {
-                trakt: 1388,
-                slug: Some("breaking-bad".to_string()),
-                tvdb: Some(81189),
-                imdb: Some("tt0903747".to_string()),
-                tmdb: Some(1396),
-                tvrage: Some(18164),
-            },
-            runtime: None,
-        }),
-        episode: Some(TraktEpisode {
-            season: 5,
-            number: 16,
-            title: "Felina".to_string(),
-            ids: TraktIds {
-                trakt: 62155,
-                slug: None,
-                tvdb: Some(4639461),
-                imdb: Some("tt2301451".to_string()),
-                tmdb: Some(62161),
-                tvrage: None,
-            },
-            runtime: None,
-        }),
-    }
-}
-
 #[test]
 fn test_build_payload_episode() {
-    let response = create_episode_response();
+    let payload = build_payload(&episode_watching());
 
-    let payload = build_payload(&response, 0.0); // Rating ignored for episodes
-
-    assert!(payload.is_some());
-    let p = payload.unwrap();
-    assert_eq!(p.details, "Breaking Bad");
-    assert_eq!(p.state, "S05E16 - Felina");
-    assert_eq!(p.media, "shows");
+    assert_eq!(payload.details, "Breaking Bad");
+    assert_eq!(payload.state, "S05E16 - Felina");
+    assert_eq!(payload.media, "shows");
 }
 
 #[test]
-fn test_build_payload_episode_imdb_link() {
-    let response = create_episode_response();
+fn test_build_payload_episode_imdb_button() {
+    let payload = build_payload(&episode_watching());
 
-    let payload = build_payload(&response, 0.0).unwrap();
-
-    // Should link to show, not episode
-    assert_eq!(payload.link_imdb, "https://www.imdb.com/title/tt0903747");
+    // Should link to the show, not the episode.
+    assert!(payload.buttons.contains(&(
+        "IMDB".to_string(),
+        "https://www.imdb.com/title/tt0903747".to_string()
+    )));
 }
 
 #[test]
-fn test_build_payload_episode_trakt_link() {
-    let response = create_episode_response();
+fn test_build_payload_episode_trakt_button() {
+    let payload = build_payload(&episode_watching());
 
-    let payload = build_payload(&response, 0.0).unwrap();
+    assert!(payload.buttons.contains(&(
+        "Trakt".to_string(),
+        "https://trakt.tv/shows/breaking-bad".to_string()
+    )));
+}
 
-    assert_eq!(payload.link_trakt, "https://trakt.tv/shows/breaking-bad");
+#[test]
+fn test_build_payload_episode_without_poster_falls_back_to_media() {
+    // The episode fixture has no resolved poster.
+    let payload = build_payload(&episode_watching());
+
+    assert_eq!(payload.large_image, "shows");
 }
 
 #[test]
 fn test_build_payload_episode_formatting() {
     // Test episode number formatting (leading zeros)
-    let mut response = create_episode_response();
-    response.episode.as_mut().unwrap().season = 1;
-    response.episode.as_mut().unwrap().number = 1;
-    response.episode.as_mut().unwrap().title = "Pilot".to_string();
+    let mut watching = episode_watching();
+    watching.season = Some(1);
+    watching.episode_number = Some(1);
+    watching.episode_title = Some("Pilot".to_string());
 
-    let payload = build_payload(&response, 0.0).unwrap();
+    let payload = build_payload(&watching);
 
     assert_eq!(payload.state, "S01E01 - Pilot");
 }
 
 // ============================================================================
-// Build Payload Tests - Unknown Type
+// Build Payload Tests - Missing IDs
 // ============================================================================
 
 #[test]
-fn test_build_payload_unknown_type() {
-    let response = TraktWatchingResponse {
-        expires_at: "2024-01-15T11:00:00.000Z".to_string(),
-        started_at: "2024-01-15T10:00:00.000Z".to_string(),
-        action: "watching".to_string(),
-        r#type: "unknown".to_string(),
-        movie: None,
-        show: None,
-        episode: None,
-    };
+fn test_build_payload_movie_missing_ids_has_no_buttons() {
+    let mut watching = movie_watching();
+    watching.imdb_url = None;
+    watching.source_link = None;
 
-    let payload = build_payload(&response, 0.0);
+    let payload = build_payload(&watching);
 
-    assert!(payload.is_none());
-}
-
-#[test]
-fn test_build_payload_movie_missing_ids() {
-    let response = TraktWatchingResponse {
-        expires_at: "2024-01-15T11:00:00.000Z".to_string(),
-        started_at: "2024-01-15T10:00:00.000Z".to_string(),
-        action: "watching".to_string(),
-        r#type: "movie".to_string(),
-        movie: Some(TraktMovie {
-            title: "Test".to_string(),
-            year: 2020,
-            ids: TraktIds {
-                trakt: 12345,
-                slug: None, // Missing slug
-                tvdb: None,
-                imdb: None, // Missing imdb
-                tmdb: None,
-                tvrage: None,
-            },
-            runtime: None,
-        }),
-        show: None,
-        episode: None,
-    };
-
-    let payload = build_payload(&response, 8.0);
-
-    // Should return None because required IDs are missing
-    assert!(payload.is_none());
+    // Still renders, just without buttons.
+    assert_eq!(payload.details, "Inception (2010)");
+    assert!(payload.buttons.is_empty());
 }
 
 // ============================================================================
@@ -263,25 +187,17 @@ fn test_build_payload_movie_missing_ids() {
 // ============================================================================
 
 #[test]
-fn test_get_app_id_for_movie() {
-    let app_id = get_app_id_for_media_type("movie");
-    assert_eq!(app_id, DEFAULT_DISCORD_APP_ID_MOVIE);
+fn test_app_id_for_movie() {
+    assert_eq!(
+        app_id_for_kind(MediaKind::Movie),
+        DEFAULT_DISCORD_APP_ID_MOVIE
+    );
 }
 
 #[test]
-fn test_get_app_id_for_episode() {
-    let app_id = get_app_id_for_media_type("episode");
-    assert_eq!(app_id, DEFAULT_DISCORD_APP_ID_SHOW);
-}
-
-#[test]
-fn test_get_app_id_for_unknown_defaults_to_movie() {
-    let app_id = get_app_id_for_media_type("unknown");
-    assert_eq!(app_id, DEFAULT_DISCORD_APP_ID_MOVIE);
-}
-
-#[test]
-fn test_get_app_id_for_empty_string_defaults_to_movie() {
-    let app_id = get_app_id_for_media_type("");
-    assert_eq!(app_id, DEFAULT_DISCORD_APP_ID_MOVIE);
+fn test_app_id_for_episode() {
+    assert_eq!(
+        app_id_for_kind(MediaKind::Episode),
+        DEFAULT_DISCORD_APP_ID_SHOW
+    );
 }

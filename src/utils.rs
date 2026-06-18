@@ -163,7 +163,7 @@ pub struct TraktAccessToken {
     pub created_at: u64,
 }
 
-use crate::trakt::TraktWatchingResponse;
+use crate::source::Watching;
 
 pub struct Env {
     pub trakt_username: String,
@@ -787,19 +787,19 @@ pub fn set_restrictive_permissions(path: &std::path::Path) {
 #[cfg(not(unix))]
 pub fn set_restrictive_permissions(_path: &std::path::Path) {}
 
-pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {
-    let start_date = DateTime::parse_from_rfc3339(&trakt_response.started_at).unwrap();
-    let end_date = DateTime::parse_from_rfc3339(&trakt_response.expires_at).unwrap();
+pub fn get_watch_stats(watching: &Watching) -> WatchStats {
+    let end_date = watching.expires_at;
 
-    let runtime_minutes = extract_runtime_minutes(trakt_response);
-    let (start_date, end_date) = match runtime_minutes {
+    // Prefer a precise window derived from the known runtime; otherwise fall
+    // back to the source-provided session times.
+    let (start_date, end_date) = match watching.runtime_minutes {
         Some(minutes) => {
             let duration = chrono::Duration::minutes(i64::from(minutes));
             (end_date - duration, end_date)
         }
         None => {
-            tracing::trace!("No runtime available, using Trakt session times as fallback");
-            (start_date, end_date)
+            tracing::trace!("No runtime available, using source session times as fallback");
+            (watching.started_at, end_date)
         }
     };
 
@@ -816,25 +816,8 @@ pub fn get_watch_stats(trakt_response: &TraktWatchingResponse) -> WatchStats {
         watch_percentage,
         start_date,
         end_date,
-        runtime_minutes,
+        runtime_minutes: watching.runtime_minutes,
     }
-}
-
-fn extract_runtime_minutes(trakt_response: &TraktWatchingResponse) -> Option<u16> {
-    let minutes = match trakt_response.r#type.as_str() {
-        "movie" => trakt_response
-            .movie
-            .as_ref()
-            .and_then(|movie| movie.runtime),
-        "episode" => trakt_response
-            .episode
-            .as_ref()
-            .and_then(|episode| episode.runtime)
-            .or_else(|| trakt_response.show.as_ref().and_then(|show| show.runtime)),
-        _ => None,
-    };
-
-    minutes.filter(|&value| value > 0)
 }
 
 pub enum MediaType {

@@ -8,6 +8,7 @@ use chrono::Utc;
 use discrakt::{
     autostart,
     discord::Discord,
+    source::{trakt::TraktSource, MediaKind, Source},
     state::AppState,
     trakt::Trakt,
     tray::{Tray, TrayCommand},
@@ -373,8 +374,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Spawn background polling thread
     let polling_handle = thread::spawn(move || {
         let mut discord = Discord::new(DEFAULT_DISCORD_APP_ID.to_string());
-        let mut trakt = Trakt::new(trakt_client_id, trakt_username, trakt_access_token);
-        trakt.set_language(tmdb_language);
+        let trakt = Trakt::new(trakt_client_id, trakt_username, trakt_access_token);
+        let mut source: Box<dyn Source> = Box::new(TraktSource::new(trakt, tmdb_token));
+        source.set_language(tmdb_language);
 
         discord.connect();
 
@@ -403,7 +405,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             if let Some(lang) = new_lang {
-                trakt.set_language(lang);
+                source.set_language(lang);
             }
 
             // Check if paused from shared state
@@ -415,8 +417,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
 
-            let response = match Trakt::get_watching(&trakt) {
-                Some(response) => response,
+            let watching = match source.get_watching() {
+                Some(watching) => watching,
                 None => {
                     tracing::debug!("Nothing is being played");
                     // Update state: nothing playing
@@ -430,7 +432,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             // Check if the activity has expired
-            let watch_stats = get_watch_stats(&response);
+            let watch_stats = get_watch_stats(&watching);
             if Utc::now() >= watch_stats.end_date {
                 tracing::debug!("Activity has expired, clearing Discord presence");
                 if let Ok(mut state) = app_state_clone.write() {
@@ -443,31 +445,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Update state with current watching info
             if let Ok(mut state) = app_state_clone.write() {
-                let (title, details) = match response.r#type.as_str() {
-                    "movie" => {
-                        let movie = response.movie.as_ref().unwrap();
-                        (
-                            format!("{} ({})", movie.title, movie.year),
-                            "Movie".to_string(),
-                        )
+                let (title, details) = match watching.kind {
+                    MediaKind::Movie => {
+                        let title = match watching.year {
+                            Some(year) => format!("{} ({})", watching.title, year),
+                            None => watching.title.clone(),
+                        };
+                        (title, "Movie".to_string())
                     }
-                    "episode" => {
-                        let show = response.show.as_ref().unwrap();
-                        let episode = response.episode.as_ref().unwrap();
-                        (
-                            show.title.clone(),
-                            format!(
-                                "S{:02}E{:02} - {}",
-                                episode.season, episode.number, episode.title
-                            ),
-                        )
-                    }
-                    _ => ("Unknown".to_string(), "".to_string()),
+                    MediaKind::Episode => (
+                        watching.title.clone(),
+                        format!(
+                            "S{:02}E{:02} - {}",
+                            watching.season.unwrap_or(0),
+                            watching.episode_number.unwrap_or(0),
+                            watching.episode_title.as_deref().unwrap_or("")
+                        ),
+                    ),
                 };
                 state.set_watching(title, details, watch_stats.watch_percentage);
             }
 
-            discord.set_activity(&response, &mut trakt, tmdb_token.clone());
+            discord.set_activity(&watching);
         }
 
         discord.clear_activity();
