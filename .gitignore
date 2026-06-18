@@ -2,3 +2,6 @@ credentials.ini
 
 # Added by cargo
 /target
+
+# Local SIMKL API test credentials (never commit)
+.simkl-creds.env
