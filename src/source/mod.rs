@@ -1,5 +1,6 @@
 use chrono::{DateTime, FixedOffset};
 
+pub mod plex;
 pub mod trakt;
 
 /// The kind of media being watched.
