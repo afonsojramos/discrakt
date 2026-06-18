@@ -41,6 +41,16 @@ struct SubmittedCredentials {
     trakt_client_id: String,
 }
 
+/// Plex configuration submitted via the setup form.
+#[derive(Debug, Deserialize)]
+struct PlexSubmitted {
+    #[serde(rename = "serverUrl")]
+    server_url: String,
+    token: String,
+    #[serde(default)]
+    username: String,
+}
+
 /// State of the OAuth authorization flow.
 #[derive(Debug, Clone)]
 enum OAuthState {
@@ -143,6 +153,105 @@ fn write_credentials(creds: &SubmittedCredentials) -> Result<PathBuf, String> {
     Ok(config_path)
 }
 
+/// Writes a Plex configuration to the config file and marks Plex as the source.
+fn write_plex_credentials(creds: &PlexSubmitted) -> Result<PathBuf, String> {
+    let config_dir = config_dir_path()?;
+
+    if !config_dir.exists() {
+        std::fs::create_dir_all(&config_dir)
+            .map_err(|e| format!("Failed to create config directory: {e}"))?;
+    }
+
+    let config_path = config_dir.join("credentials.ini");
+
+    let mut config = Ini::new_cs();
+    if config_path.exists() {
+        let _ = config.load(&config_path);
+    }
+
+    config.setstr("Discrakt", "source", Some("plex"));
+    config.setstr("Plex", "serverUrl", Some(creds.server_url.trim()));
+    config.setstr("Plex", "token", Some(creds.token.trim()));
+    config.setstr("Plex", "username", Some(creds.username.trim()));
+
+    config
+        .write(&config_path)
+        .map_err(|e| format!("Failed to write config file: {e}"))?;
+
+    set_restrictive_permissions(&config_path);
+
+    tracing::info!("Plex configuration saved to {:?}", config_path);
+    Ok(config_path)
+}
+
+/// Reads and validates a JSON request body, enforcing the size limit.
+fn read_json_body(request: &mut tiny_http::Request) -> Result<String, (StatusCode, String)> {
+    let content_type = request
+        .headers()
+        .iter()
+        .find(|h| {
+            h.field
+                .as_str()
+                .as_str()
+                .eq_ignore_ascii_case("content-type")
+        })
+        .map(|h| h.value.as_str().to_string());
+
+    if !content_type
+        .as_ref()
+        .is_some_and(|ct| ct.starts_with("application/json"))
+    {
+        return Err((
+            StatusCode(415),
+            "Content-Type must be application/json".to_string(),
+        ));
+    }
+
+    // Check Content-Length header to prevent memory exhaustion.
+    let content_length = request
+        .headers()
+        .iter()
+        .find(|h| {
+            h.field
+                .as_str()
+                .as_str()
+                .eq_ignore_ascii_case("content-length")
+        })
+        .and_then(|h| h.value.as_str().parse::<usize>().ok());
+
+    if content_length.is_some_and(|len| len > MAX_BODY_SIZE) {
+        tracing::warn!("Request body too large (max {} bytes)", MAX_BODY_SIZE);
+        return Err((StatusCode(413), "Request body too large".to_string()));
+    }
+
+    let capacity = content_length.unwrap_or(1024).min(MAX_BODY_SIZE);
+    let mut body = Vec::with_capacity(capacity);
+    let reader = request.as_reader();
+    let mut buf = [0u8; 4096];
+
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break, // EOF
+            Ok(n) => {
+                body.extend_from_slice(&buf[..n]);
+                if body.len() > MAX_BODY_SIZE {
+                    tracing::warn!("Request body exceeded limit during reading");
+                    return Err((StatusCode(413), "Request body too large".to_string()));
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to read request body: {}", e);
+                return Err((StatusCode(400), "Failed to read request".to_string()));
+            }
+        }
+    }
+
+    String::from_utf8(body).map_err(|e| {
+        tracing::error!("Request body is not valid UTF-8: {}", e);
+        (StatusCode(400), "Invalid UTF-8 in request body".to_string())
+    })
+}
+
 /// Find an available port for the server.
 fn find_available_port() -> Option<u16> {
     // Try to bind to port 0, which lets the OS assign an available port
@@ -242,99 +351,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
             }
 
             ("POST", "/submit") => {
-                // Check Content-Type header
-                let content_type = request
-                    .headers()
-                    .iter()
-                    .find(|h| {
-                        h.field
-                            .as_str()
-                            .as_str()
-                            .eq_ignore_ascii_case("content-type")
-                    })
-                    .map(|h| h.value.as_str().to_string());
-
-                if !content_type
-                    .as_ref()
-                    .is_some_and(|ct| ct.starts_with("application/json"))
-                {
-                    let response = Response::from_string("Content-Type must be application/json")
-                        .with_status_code(StatusCode(415));
-                    let _ = request.respond(response);
-                    continue;
-                }
-
-                // Check Content-Length header to prevent memory exhaustion
-                let content_length = request
-                    .headers()
-                    .iter()
-                    .find(|h| {
-                        h.field
-                            .as_str()
-                            .as_str()
-                            .eq_ignore_ascii_case("content-length")
-                    })
-                    .and_then(|h| h.value.as_str().parse::<usize>().ok());
-
-                if let Some(len) = content_length {
-                    if len > MAX_BODY_SIZE {
-                        tracing::warn!(
-                            "Request body too large: {} bytes (max {})",
-                            len,
-                            MAX_BODY_SIZE
-                        );
-                        let response = Response::from_string("Request body too large")
-                            .with_status_code(StatusCode(413));
-                        let _ = request.respond(response);
-                        continue;
-                    }
-                }
-
-                // Read the request body with size limit
-                let body_result: Result<String, (StatusCode, String)> = {
-                    let capacity = content_length.unwrap_or(1024).min(MAX_BODY_SIZE);
-                    let mut body = Vec::with_capacity(capacity);
-                    let reader = request.as_reader();
-
-                    // Read in chunks to enforce size limit
-                    let mut buf = [0u8; 4096];
-                    let mut read_error = None;
-                    loop {
-                        match reader.read(&mut buf) {
-                            Ok(0) => break, // EOF
-                            Ok(n) => {
-                                body.extend_from_slice(&buf[..n]);
-                                if body.len() > MAX_BODY_SIZE {
-                                    tracing::warn!(
-                                        "Request body exceeded limit during reading: {} bytes",
-                                        body.len()
-                                    );
-                                    read_error = Some((
-                                        StatusCode(413),
-                                        "Request body too large".to_string(),
-                                    ));
-                                    break;
-                                }
-                            }
-                            Err(e) => {
-                                tracing::error!("Failed to read request body: {}", e);
-                                read_error =
-                                    Some((StatusCode(400), "Failed to read request".to_string()));
-                                break;
-                            }
-                        }
-                    }
-
-                    match read_error {
-                        Some((code, msg)) => Err((code, msg)),
-                        None => String::from_utf8(body).map_err(|e| {
-                            tracing::error!("Request body is not valid UTF-8: {}", e);
-                            (StatusCode(400), "Invalid UTF-8 in request body".to_string())
-                        }),
-                    }
-                };
-
-                let body = match body_result {
+                let body = match read_json_body(&mut request) {
                     Ok(b) => b,
                     Err((code, msg)) => {
                         let response = Response::from_string(msg).with_status_code(code);
@@ -454,6 +471,61 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                         let _ = request.respond(response);
                     }
                 }
+            }
+
+            ("POST", "/submit-plex") => {
+                let body = match read_json_body(&mut request) {
+                    Ok(b) => b,
+                    Err((code, msg)) => {
+                        let response = Response::from_string(msg).with_status_code(code);
+                        let _ = request.respond(response);
+                        continue;
+                    }
+                };
+
+                let creds: PlexSubmitted = match serde_json::from_str(&body) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::error!("Failed to parse Plex JSON: {}", e);
+                        let response = Response::from_string(format!("Invalid JSON: {e}"))
+                            .with_status_code(StatusCode(400));
+                        let _ = request.respond(response);
+                        continue;
+                    }
+                };
+
+                if creds.server_url.trim().is_empty() || creds.token.trim().is_empty() {
+                    let response = Response::from_string("Plex server URL and token are required")
+                        .with_status_code(StatusCode(400));
+                    let _ = request.respond(response);
+                    continue;
+                }
+
+                if let Err(e) = write_plex_credentials(&creds) {
+                    tracing::error!("Failed to write Plex credentials: {}", e);
+                    let response = Response::from_string(format!("Failed to save: {e}"))
+                        .with_status_code(StatusCode(500));
+                    let _ = request.respond(response);
+                    continue;
+                }
+
+                // Plex needs no OAuth flow: record the result and finish.
+                if let Ok(mut result_guard) = result.lock() {
+                    *result_guard = Some(SetupResult {
+                        trakt_username: String::new(),
+                        trakt_client_id: String::new(),
+                    });
+                }
+                if let Ok(mut state) = oauth_state.lock() {
+                    *state = OAuthState::Success(Instant::now());
+                }
+                setup_complete.store(true, Ordering::SeqCst);
+
+                let response = Response::from_string(r#"{"status":"success"}"#).with_header(
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                        .unwrap(),
+                );
+                let _ = request.respond(response);
             }
 
             ("GET", "/status") => {
@@ -683,6 +755,32 @@ mod tests {
         let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "testuser");
         assert_eq!(result.trakt_client_id, ""); // Missing client ID defaults to empty
+    }
+
+    #[test]
+    fn test_parse_plex_submitted() {
+        let json = r#"{"serverUrl":"http://host:32400","token":"abc","username":"alice"}"#;
+        let result: PlexSubmitted = serde_json::from_str(json).unwrap();
+        assert_eq!(result.server_url, "http://host:32400");
+        assert_eq!(result.token, "abc");
+        assert_eq!(result.username, "alice");
+    }
+
+    #[test]
+    fn test_parse_plex_submitted_without_username() {
+        let json = r#"{"serverUrl":"http://host:32400","token":"abc"}"#;
+        let result: PlexSubmitted = serde_json::from_str(json).unwrap();
+        assert_eq!(result.server_url, "http://host:32400");
+        assert_eq!(result.username, ""); // Optional, defaults to empty
+    }
+
+    #[test]
+    fn test_setup_page_includes_both_sources() {
+        let page = html::setup_page();
+        assert!(page.contains("id=\"plexForm\""));
+        assert!(page.contains("action=\"/submit-plex\""));
+        assert!(page.contains("id=\"setupForm\""));
+        assert!(page.contains("id=\"tab-plex\""));
     }
 
     #[test]

@@ -333,6 +333,60 @@ fn script() -> &'static str {
         let pollInterval = null;
         let pollIntervalMs = 5000;
 
+        function selectSource(source) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.classList.remove('show');
+            const isPlex = source === 'plex';
+            document.getElementById('trakt-pane').style.display = isPlex ? 'none' : 'block';
+            document.getElementById('plex-pane').style.display = isPlex ? 'block' : 'none';
+            document.getElementById('tab-trakt').style.opacity = isPlex ? '0.5' : '1';
+            document.getElementById('tab-plex').style.opacity = isPlex ? '1' : '0.5';
+        }
+        document.getElementById('tab-trakt').addEventListener('click', () => selectSource('trakt'));
+        document.getElementById('tab-plex').addEventListener('click', () => selectSource('plex'));
+
+        document.getElementById('plexForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const errorDiv = document.getElementById('error');
+            const submitBtn = document.getElementById('plexSubmitBtn');
+            errorDiv.classList.remove('show');
+
+            const data = Object.fromEntries(new FormData(this).entries());
+
+            if (!data.serverUrl || !data.token) {
+                errorDiv.textContent = 'Please fill in the Plex server URL and token.';
+                errorDiv.classList.add('show');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Connecting...';
+
+            try {
+                const response = await fetch('/submit-plex', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+
+                if (response.ok) {
+                    showSuccessScreen();
+                } else {
+                    const errorText = await response.text();
+                    errorDiv.textContent = errorText || 'Failed to save configuration. Please try again.';
+                    errorDiv.classList.add('show');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Connect Plex';
+                }
+            } catch (err) {
+                errorDiv.textContent = 'Connection error. Please try again.';
+                errorDiv.classList.add('show');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Connect Plex';
+            }
+        });
+
         document.getElementById('setupForm').addEventListener('submit', async function(e) {
             e.preventDefault();
 
@@ -487,24 +541,57 @@ fn setup_form() -> String {
         <div id="setupForm-container">
             <div class="info-box">
                 <h3>Getting Started</h3>
-                <p>Enter your Trakt username to connect your account.</p>
+                <p>Choose how Discrakt should detect what you're watching.</p>
+            </div>
+
+            <div class="source-tabs" style="display:flex;gap:8px;margin-bottom:20px;">
+                <button type="button" id="tab-trakt" style="flex:1;width:auto;">Trakt</button>
+                <button type="button" id="tab-plex" style="flex:1;width:auto;opacity:0.5;">Plex</button>
             </div>
 
             <div class="error" id="error"></div>
 
-            <form id="setupForm" method="POST" action="/submit">
-                <div class="form-group">
-                    <label for="traktUser" class="required">Trakt Username</label>
-                    <input type="text" id="traktUser" name="traktUser"
-                           placeholder="Your Trakt username" required
-                           autocomplete="username">
-                    <p class="help-text">
-                        Find it at <a href="{TRAKT_SETTINGS_URL}" target="_blank">trakt.tv/settings</a>
-                    </p>
-                </div>
+            <div id="trakt-pane">
+                <form id="setupForm" method="POST" action="/submit">
+                    <div class="form-group">
+                        <label for="traktUser" class="required">Trakt Username</label>
+                        <input type="text" id="traktUser" name="traktUser"
+                               placeholder="Your Trakt username"
+                               autocomplete="username">
+                        <p class="help-text">
+                            Find it at <a href="{TRAKT_SETTINGS_URL}" target="_blank">trakt.tv/settings</a>
+                        </p>
+                    </div>
 
-                <button type="submit" id="submitBtn">Login with Trakt</button>
-            </form>
+                    <button type="submit" id="submitBtn">Login with Trakt</button>
+                </form>
+            </div>
+
+            <div id="plex-pane" style="display:none;">
+                <form id="plexForm" method="POST" action="/submit-plex">
+                    <div class="form-group">
+                        <label for="plexServerUrl" class="required">Plex Server URL</label>
+                        <input type="text" id="plexServerUrl" name="serverUrl"
+                               placeholder="http://192.168.1.10:32400">
+                    </div>
+                    <div class="form-group">
+                        <label for="plexToken" class="required">Plex Token</label>
+                        <input type="text" id="plexToken" name="token"
+                               placeholder="Your X-Plex-Token">
+                        <p class="help-text">
+                            <a href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank">How to find your token</a>
+                        </p>
+                    </div>
+                    <div class="form-group">
+                        <label for="plexUsername">Plex Username</label>
+                        <input type="text" id="plexUsername" name="username"
+                               placeholder="Optional (for shared servers)">
+                        <p class="help-text">Leave blank to mirror the first active session.</p>
+                    </div>
+
+                    <button type="submit" id="plexSubmitBtn">Connect Plex</button>
+                </form>
+            </div>
 
             {footer}
         </div>
@@ -547,8 +634,8 @@ fn success_screen() -> String {
     format!(
         r#"
         <div id="success-container" class="auth-container">
-            <h2 style="color: {COLOR_SUCCESS}; margin-bottom: 24px;">Authorization Successful!</h2>
-            <p style="margin-bottom: 16px;">Your Trakt account has been connected.</p>
+            <h2 style="color: {COLOR_SUCCESS}; margin-bottom: 24px;">Setup Complete!</h2>
+            <p style="margin-bottom: 16px;">Your account has been connected.</p>
             <p style="color: #888;">{APP_NAME} is now starting.</p>
             <p style="margin-top: 20px; color: #666; font-size: 0.9rem;">
                 This tab will close automatically...
