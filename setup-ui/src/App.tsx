@@ -1,12 +1,13 @@
-import { type FormEvent, useEffect, useState } from "react";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { ChevronDown, ExternalLink, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getStatus, startPlexLogin, submitPlex, submitTrakt } from "@/lib/api";
+import { getStatus, startPlexLogin, submitPlex, submitTrakt, submitTraktPublic } from "@/lib/api";
 
 type AuthInfo = {
   /** The URL the user opens to authorize. */
@@ -108,8 +109,21 @@ function SetupScreen({ error, setError, onAuth, onDone }: SetupProps) {
   );
 }
 
+function Advanced({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Collapsible className="flex flex-col">
+      <CollapsibleTrigger className="group flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-foreground">
+        <ChevronDown className="size-3 transition-transform group-data-panel-open:rotate-180" />
+        {label}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-3">{children}</CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function TraktForm({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
   const [busy, setBusy] = useState(false);
+  const [username, setUsername] = useState("");
 
   async function handleLogin() {
     setBusy(true);
@@ -133,16 +147,54 @@ function TraktForm({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
     }
   }
 
+  async function handlePublic(event: FormEvent) {
+    event.preventDefault();
+    if (!username.trim()) {
+      setError("Please enter your Trakt username.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await submitTraktPublic(username.trim());
+      onDone();
+    } catch (err) {
+      setError(messageOf(err));
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        Connect your Trakt account. You'll approve Discrakt in your browser, then any
-        app that scrobbles to Trakt shows up on Discord.
+        Connect your Trakt account. You'll approve Discrakt in your browser, then any app that
+        scrobbles to Trakt shows up on Discord.
       </p>
       <Button onClick={handleLogin} disabled={busy}>
         {busy && <Loader2 className="animate-spin" />}
         Login with Trakt
       </Button>
+
+      <Advanced label="Use a public profile instead">
+        <form onSubmit={handlePublic} className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            Skip logging in and read your public Trakt watching status by username.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="traktPublicUser">Trakt username</Label>
+            <Input
+              id="traktPublicUser"
+              autoComplete="username"
+              placeholder="Your Trakt username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
+          </div>
+          <Button type="submit" variant="secondary" disabled={busy}>
+            Use public profile
+          </Button>
+        </form>
+      </Advanced>
     </div>
   );
 }
@@ -189,59 +241,58 @@ function PlexPane({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
 
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Connect to your Plex Media Server and mirror your active session.
+      </p>
       <Button onClick={handleLogin} disabled={busy}>
         {busy && <Loader2 className="animate-spin" />}
         Login with Plex
       </Button>
 
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="h-px flex-1 bg-border" />
-        or enter server details manually
-        <span className="h-px flex-1 bg-border" />
-      </div>
-
-      <form onSubmit={handleManual} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="serverUrl">Plex server URL</Label>
-          <Input
-            id="serverUrl"
-            placeholder="http://192.168.1.10:32400"
-            value={form.serverUrl}
-            onChange={(e) => setForm({ ...form, serverUrl: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="token">Plex token</Label>
-          <Input
-            id="token"
-            placeholder="Your X-Plex-Token"
-            value={form.token}
-            onChange={(e) => setForm({ ...form, token: e.target.value })}
-          />
-          <p className="text-xs text-muted-foreground">
-            <a
-              className="underline"
-              href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/"
-              target="_blank"
-              rel="noreferrer"
-            >
-              How to find your token
-            </a>
-          </p>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="plexUsername">Plex username</Label>
-          <Input
-            id="plexUsername"
-            placeholder="Optional (for shared servers)"
-            value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
-          />
-        </div>
-        <Button type="submit" variant="secondary" disabled={busy}>
-          Connect Plex
-        </Button>
-      </form>
+      <Advanced label="Enter server details manually">
+        <form onSubmit={handleManual} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="serverUrl">Plex server URL</Label>
+            <Input
+              id="serverUrl"
+              placeholder="http://192.168.1.10:32400"
+              value={form.serverUrl}
+              onChange={(e) => setForm({ ...form, serverUrl: e.target.value })}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="token">Plex token</Label>
+            <Input
+              id="token"
+              placeholder="Your X-Plex-Token"
+              value={form.token}
+              onChange={(e) => setForm({ ...form, token: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              <a
+                className="underline"
+                href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                How to find your token
+              </a>
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="plexUsername">Plex username</Label>
+            <Input
+              id="plexUsername"
+              placeholder="Optional (for shared servers)"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+            />
+          </div>
+          <Button type="submit" variant="secondary" disabled={busy}>
+            Connect Plex
+          </Button>
+        </form>
+      </Advanced>
     </div>
   );
 }

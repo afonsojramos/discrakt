@@ -186,6 +186,38 @@ fn write_credentials(creds: &SubmittedCredentials) -> Result<PathBuf, String> {
     Ok(config_path)
 }
 
+/// Writes a public-profile Trakt configuration (username, no OAuth) so that
+/// `get_watching` reads the public `/users/{username}/watching` endpoint.
+fn write_public_credentials(username: &str) -> Result<PathBuf, String> {
+    let config_dir = config_dir_path()?;
+
+    if !config_dir.exists() {
+        std::fs::create_dir_all(&config_dir)
+            .map_err(|e| format!("Failed to create config directory: {e}"))?;
+    }
+
+    let config_path = config_dir.join("credentials.ini");
+
+    let mut config = Ini::new_cs();
+    if config_path.exists() {
+        let _ = config.load(&config_path);
+    }
+
+    config.setstr("Trakt API", "traktUser", Some(username.trim()));
+    config.setstr("Trakt API", "enabledOAuth", Some("false"));
+    // Clear any OAuth token so the public-username endpoint is used.
+    config.setstr("Trakt API", "OAuthAccessToken", Some(""));
+
+    config
+        .write(&config_path)
+        .map_err(|e| format!("Failed to write config file: {e}"))?;
+
+    set_restrictive_permissions(&config_path);
+
+    tracing::info!("Public Trakt profile saved to {:?}", config_path);
+    Ok(config_path)
+}
+
 /// Writes a Plex configuration to the config file and marks Plex as the source.
 fn write_plex_credentials(creds: &PlexSubmitted) -> Result<PathBuf, String> {
     let config_dir = config_dir_path()?;
@@ -555,6 +587,61 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 if let Ok(mut result_guard) = result.lock() {
                     *result_guard = Some(SetupResult {
                         trakt_username: String::new(),
+                        trakt_client_id: String::new(),
+                    });
+                }
+                if let Ok(mut state) = oauth_state.lock() {
+                    *state = OAuthState::Success(Instant::now());
+                }
+                setup_complete.store(true, Ordering::SeqCst);
+
+                let response = Response::from_string(r#"{"status":"success"}"#).with_header(
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                        .unwrap(),
+                );
+                let _ = request.respond(response);
+            }
+
+            ("POST", "/submit-public") => {
+                let body = match read_json_body(&mut request) {
+                    Ok(b) => b,
+                    Err((code, msg)) => {
+                        let response = Response::from_string(msg).with_status_code(code);
+                        let _ = request.respond(response);
+                        continue;
+                    }
+                };
+
+                let creds: SubmittedCredentials = match serde_json::from_str(&body) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::error!("Failed to parse JSON: {}", e);
+                        let response = Response::from_string(format!("Invalid JSON: {e}"))
+                            .with_status_code(StatusCode(400));
+                        let _ = request.respond(response);
+                        continue;
+                    }
+                };
+
+                if creds.trakt_user.trim().is_empty() {
+                    let response = Response::from_string("Trakt username is required")
+                        .with_status_code(StatusCode(400));
+                    let _ = request.respond(response);
+                    continue;
+                }
+
+                if let Err(e) = write_public_credentials(&creds.trakt_user) {
+                    tracing::error!("Failed to write public profile: {}", e);
+                    let response = Response::from_string(format!("Failed to save: {e}"))
+                        .with_status_code(StatusCode(500));
+                    let _ = request.respond(response);
+                    continue;
+                }
+
+                // No OAuth for the public path: record the result and finish.
+                if let Ok(mut result_guard) = result.lock() {
+                    *result_guard = Some(SetupResult {
+                        trakt_username: creds.trakt_user.clone(),
                         trakt_client_id: String::new(),
                     });
                 }

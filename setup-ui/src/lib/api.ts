@@ -36,6 +36,11 @@ export function submitTrakt(): Promise<TraktSubmitResponse> {
   return postJson<TraktSubmitResponse>("/submit", {});
 }
 
+export function submitTraktPublic(traktUser: string): Promise<unknown> {
+  // Public-profile setup: poll the user's public watching status, no login.
+  return postJson("/submit-public", { traktUser });
+}
+
 export function submitPlex(input: {
   serverUrl: string;
   token: string;
