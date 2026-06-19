@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use chrono::{DateTime, FixedOffset, Utc};
@@ -48,6 +49,13 @@ struct PlexMetadata {
     parent_index: Option<u8>,
     index: Option<u8>,
     year: Option<u16>,
+    /// The item's own library key, used to resolve external ids when the session
+    /// payload omits them (which it normally does).
+    #[serde(rename = "ratingKey")]
+    rating_key: Option<String>,
+    /// The show's library key (episodes only).
+    #[serde(rename = "grandparentRatingKey")]
+    grandparent_rating_key: Option<String>,
     /// Total runtime in milliseconds.
     duration: Option<i64>,
     /// Current playback position in milliseconds.
@@ -78,6 +86,25 @@ struct PlexPlayer {
     state: Option<String>,
 }
 
+/// Minimal shape of `/library/metadata/{key}`, used only to read external ids.
+#[derive(Deserialize)]
+struct MetadataResponse {
+    #[serde(rename = "MediaContainer")]
+    media_container: MetadataContainer,
+}
+
+#[derive(Deserialize)]
+struct MetadataContainer {
+    #[serde(rename = "Metadata", default)]
+    metadata: Vec<GuidHolder>,
+}
+
+#[derive(Deserialize)]
+struct GuidHolder {
+    #[serde(rename = "Guid", default)]
+    guids: Vec<PlexGuid>,
+}
+
 /// A [`Source`] backed by a Plex Media Server's live sessions.
 ///
 /// Polls `GET /status/sessions`, selects the configured user's actively-playing
@@ -93,6 +120,10 @@ pub struct PlexSource {
     tmdb: Tmdb,
     tmdb_token: String,
     retry_config: RetryConfig,
+    /// Caches the TMDB id resolved for a Plex `ratingKey`, so the extra metadata
+    /// lookup happens once per item rather than on every poll. `None` is cached
+    /// too, to avoid re-fetching items that genuinely have no TMDB id.
+    tmdb_id_cache: HashMap<String, Option<u32>>,
 }
 
 impl PlexSource {
@@ -110,6 +141,7 @@ impl PlexSource {
             tmdb: Tmdb::new(config.tmdb_base_url, config.language),
             tmdb_token: config.tmdb_token,
             retry_config: RetryConfig::default(),
+            tmdb_id_cache: HashMap::new(),
         }
     }
 
@@ -166,8 +198,49 @@ impl PlexSource {
             .is_some_and(|state| state == "playing")
     }
 
+    /// Resolves the TMDB id for a Plex `ratingKey` via a `/library/metadata`
+    /// lookup, because `/status/sessions` does not expose external ids. Results
+    /// (including misses) are cached per key.
+    fn resolve_tmdb_id(&mut self, rating_key: &str) -> Option<u32> {
+        if let Some(cached) = self.tmdb_id_cache.get(rating_key) {
+            return *cached;
+        }
+
+        let endpoint = format!(
+            "{}/library/metadata/{}?includeGuids=1",
+            self.server_url, rating_key
+        );
+        let agent = &self.agent;
+        let token = &self.token;
+
+        let result: Result<MetadataResponse, RetryError> = execute_with_retry(
+            || {
+                agent
+                    .get(&endpoint)
+                    .header("Accept", "application/json")
+                    .header("X-Plex-Token", token)
+                    .call()
+            },
+            &self.retry_config,
+        );
+
+        let tmdb_id = match result {
+            Ok(response) => response
+                .media_container
+                .metadata
+                .first()
+                .and_then(|item| extract_tmdb_id(&item.guids)),
+            Err(err) => {
+                tracing::debug!(error = %err, rating_key, "Failed to fetch Plex metadata for ids");
+                None
+            }
+        };
+
+        self.tmdb_id_cache.insert(rating_key.to_string(), tmdb_id);
+        tmdb_id
+    }
+
     fn enrich(&mut self, meta: &PlexMetadata) -> Option<Watching> {
-        let token = &self.tmdb_token;
         let imdb = extract_guid(&meta.guids, "imdb://");
         let imdb_url = imdb
             .as_ref()
@@ -176,7 +249,14 @@ impl PlexSource {
         let watching = match meta.kind.as_str() {
             "movie" => {
                 let mut title = meta.title.clone().unwrap_or_default();
-                let tmdb_id = extract_tmdb_id(&meta.guids);
+                // Prefer ids in the session payload; otherwise resolve them from
+                // the item's full metadata (the usual case).
+                let tmdb_id = extract_tmdb_id(&meta.guids).or_else(|| {
+                    meta.rating_key
+                        .as_deref()
+                        .and_then(|key| self.resolve_tmdb_id(key))
+                });
+                let token = &self.tmdb_token;
                 let mut poster_url = None;
 
                 if let Some(id) = tmdb_id {
@@ -220,11 +300,18 @@ impl PlexSource {
                 let mut episode_title = meta.title.clone().unwrap_or_default();
                 let season = meta.parent_index;
                 let number = meta.index;
-                // The show's TMDB id (used for artwork) lives on the grandparent guid.
+                // The show's TMDB id (used for artwork) is rarely in the session;
+                // fall back to resolving it from the show's full metadata.
                 let show_tmdb = meta
                     .grandparent_guid
                     .as_deref()
-                    .and_then(extract_tmdb_from_str);
+                    .and_then(extract_tmdb_from_str)
+                    .or_else(|| {
+                        meta.grandparent_rating_key
+                            .as_deref()
+                            .and_then(|key| self.resolve_tmdb_id(key))
+                    });
+                let token = &self.tmdb_token;
                 let mut poster_url = None;
 
                 if let Some(id) = show_tmdb {

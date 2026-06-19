@@ -477,3 +477,129 @@ fn test_plex_source_episode_without_season_still_localizes_title() {
     assert_eq!(result.poster_url, None);
     assert_eq!(result.episode_title.as_deref(), Some("Felina"));
 }
+
+#[test]
+fn test_plex_source_resolves_tmdb_from_metadata_when_session_lacks_ids() {
+    // Real Plex /status/sessions omits the external-id Guid array, exposing only
+    // opaque plex:// guids plus rating keys. The TMDB id must be resolved via a
+    // follow-up /library/metadata lookup.
+    let body = r#"{
+        "MediaContainer": {
+            "Metadata": [{
+                "type": "episode",
+                "title": "Felina",
+                "grandparentTitle": "Breaking Bad",
+                "parentIndex": 5,
+                "index": 16,
+                "duration": 3120000,
+                "viewOffset": 60000,
+                "guid": "plex://episode/abc",
+                "grandparentGuid": "plex://show/def",
+                "grandparentRatingKey": "66310",
+                "User": {"title": "alice"},
+                "Player": {"state": "playing"}
+            }]
+        }
+    }"#;
+    let mut server = mockito::Server::new();
+    let url = server.url();
+
+    let metadata = server
+        .mock("GET", "/library/metadata/66310")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{"MediaContainer":{"Metadata":[{"Guid":[{"id":"imdb://tt0903747"},{"id":"tmdb://1396"}]}]}}"#,
+        )
+        .create();
+    let poster = server
+        .mock("GET", "/3/tv/1396/season/5/images")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"posters": [{"file_path": "/show.jpg"}]}"#)
+        .create();
+    let show_title = server
+        .mock("GET", "/3/tv/1396")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"name": "Breaking Bad"}"#)
+        .create();
+    let episode_title = server
+        .mock("GET", "/3/tv/1396/season/5/episode/16")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"name": "Felina"}"#)
+        .create();
+
+    let mut source = plex_source(url, body, &mut server);
+    let result = source.get_watching().expect("episode should be playing");
+
+    metadata.assert();
+    poster.assert();
+    show_title.assert();
+    episode_title.assert();
+    assert_eq!(result.ids.tmdb, Some(1396));
+    assert_eq!(
+        result.poster_url.as_deref(),
+        Some("https://image.tmdb.org/t/p/w600_and_h600_bestv2/show.jpg")
+    );
+}
+
+#[test]
+fn test_plex_source_resolves_movie_tmdb_from_metadata() {
+    let body = r#"{
+        "MediaContainer": {
+            "Metadata": [{
+                "type": "movie",
+                "title": "Inception",
+                "year": 2010,
+                "duration": 8880000,
+                "viewOffset": 600000,
+                "guid": "plex://movie/abc",
+                "ratingKey": "555",
+                "User": {"title": "alice"},
+                "Player": {"state": "playing"}
+            }]
+        }
+    }"#;
+    let mut server = mockito::Server::new();
+    let url = server.url();
+
+    let metadata = server
+        .mock("GET", "/library/metadata/555")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"MediaContainer":{"Metadata":[{"Guid":[{"id":"tmdb://27205"}]}]}}"#)
+        .create();
+    let poster = server
+        .mock("GET", "/3/movie/27205/images")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"posters": [{"file_path": "/abc.jpg"}]}"#)
+        .create();
+    let title = server
+        .mock("GET", "/3/movie/27205")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"title": "Inception"}"#)
+        .create();
+
+    let mut source = plex_source(url, body, &mut server);
+    let result = source.get_watching().expect("movie should be playing");
+
+    metadata.assert();
+    poster.assert();
+    title.assert();
+    assert_eq!(result.ids.tmdb, Some(27205));
+    assert_eq!(
+        result.poster_url.as_deref(),
+        Some("https://image.tmdb.org/t/p/w600_and_h600_bestv2/abc.jpg")
+    );
+}
