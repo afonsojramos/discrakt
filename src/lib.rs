@@ -1,5 +1,6 @@
 pub mod autostart;
 pub mod discord;
+pub mod jellyfin_auth;
 pub mod metadata;
 pub mod plex_auth;
 pub mod retry;

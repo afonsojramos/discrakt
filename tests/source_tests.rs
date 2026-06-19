@@ -603,3 +603,161 @@ fn test_plex_source_resolves_movie_tmdb_from_metadata() {
         Some("https://image.tmdb.org/t/p/w600_and_h600_bestv2/abc.jpg")
     );
 }
+
+// ============================================================================
+// JellyfinSource tests
+// ============================================================================
+
+use discrakt::source::jellyfin::{JellyfinConfig, JellyfinSource};
+
+fn jellyfin_source(server_url: String, body: &str, server: &mut mockito::Server) -> JellyfinSource {
+    server
+        .mock("GET", "/Sessions")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .create();
+
+    JellyfinSource::new(JellyfinConfig {
+        server_url: server_url.clone(),
+        access_token: "tok".to_string(),
+        device_id: "dev".to_string(),
+        user_id: "u1".to_string(),
+        username: String::new(),
+        tmdb_token: "test_tmdb_token".to_string(),
+        tmdb_base_url: Some(server_url),
+        language: None,
+    })
+}
+
+#[test]
+fn test_jellyfin_source_enriches_movie() {
+    let body = r#"[{
+        "UserId": "u1", "UserName": "alice",
+        "NowPlayingItem": {
+            "Name": "Inception", "Type": "Movie", "ProductionYear": 2010,
+            "RunTimeTicks": 88800000000,
+            "ProviderIds": {"Tmdb": "27205", "Imdb": "tt1375666"}
+        },
+        "PlayState": {"PositionTicks": 6000000000, "IsPaused": false}
+    }]"#;
+    let mut server = mockito::Server::new();
+    let url = server.url();
+
+    let poster = server
+        .mock("GET", "/3/movie/27205/images")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"posters": [{"file_path": "/abc.jpg"}]}"#)
+        .create();
+    let title = server
+        .mock("GET", "/3/movie/27205")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"title": "Inception"}"#)
+        .create();
+
+    let mut source = jellyfin_source(url, body, &mut server);
+    let result = source.get_watching().expect("movie should be playing");
+
+    poster.assert();
+    title.assert();
+    assert_eq!(result.kind, MediaKind::Movie);
+    assert_eq!(result.title, "Inception");
+    assert_eq!(result.year, Some(2010));
+    assert_eq!(result.ids.tmdb, Some(27205));
+    assert_eq!(
+        result.imdb_url.as_deref(),
+        Some("https://www.imdb.com/title/tt1375666")
+    );
+    assert_eq!(
+        result.poster_url.as_deref(),
+        Some("https://image.tmdb.org/t/p/w600_and_h600_bestv2/abc.jpg")
+    );
+}
+
+#[test]
+fn test_jellyfin_source_enriches_episode_resolving_series_tmdb() {
+    let body = r#"[{
+        "UserId": "u1", "UserName": "alice",
+        "NowPlayingItem": {
+            "Name": "Felina", "Type": "Episode",
+            "SeriesName": "Breaking Bad", "SeriesId": "series1",
+            "IndexNumber": 16, "ParentIndexNumber": 5,
+            "RunTimeTicks": 31200000000,
+            "ProviderIds": {"Imdb": "tt2301451"}
+        },
+        "PlayState": {"PositionTicks": 600000000, "IsPaused": false}
+    }]"#;
+    let mut server = mockito::Server::new();
+    let url = server.url();
+
+    let series = server
+        .mock("GET", "/Items")
+        .match_query(mockito::Matcher::UrlEncoded("ids".into(), "series1".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"Items": [{"ProviderIds": {"Tmdb": "1396"}}]}"#)
+        .create();
+    let poster = server
+        .mock("GET", "/3/tv/1396/season/5/images")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"posters": [{"file_path": "/show.jpg"}]}"#)
+        .create();
+    let show_title = server
+        .mock("GET", "/3/tv/1396")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"name": "Breaking Bad"}"#)
+        .create();
+    let episode_title = server
+        .mock("GET", "/3/tv/1396/season/5/episode/16")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"name": "Felina"}"#)
+        .create();
+
+    let mut source = jellyfin_source(url, body, &mut server);
+    let result = source.get_watching().expect("episode should be playing");
+
+    series.assert();
+    poster.assert();
+    show_title.assert();
+    episode_title.assert();
+    assert_eq!(result.kind, MediaKind::Episode);
+    assert_eq!(result.title, "Breaking Bad");
+    assert_eq!(result.season, Some(5));
+    assert_eq!(result.episode_number, Some(16));
+    assert_eq!(result.ids.tmdb, Some(1396));
+    assert_eq!(
+        result.poster_url.as_deref(),
+        Some("https://image.tmdb.org/t/p/w600_and_h600_bestv2/show.jpg")
+    );
+}
+
+#[test]
+fn test_jellyfin_source_ignores_other_users_and_paused() {
+    let other_user = r#"[{
+        "UserId": "u2", "UserName": "bob",
+        "NowPlayingItem": {"Name": "X", "Type": "Movie", "ProviderIds": {"Tmdb": "1"}},
+        "PlayState": {"IsPaused": false}
+    }]"#;
+    let mut server = mockito::Server::new();
+    let mut source = jellyfin_source(server.url(), other_user, &mut server);
+    assert!(source.get_watching().is_none());
+
+    let paused = r#"[{
+        "UserId": "u1", "UserName": "alice",
+        "NowPlayingItem": {"Name": "X", "Type": "Movie", "ProviderIds": {"Tmdb": "1"}},
+        "PlayState": {"IsPaused": true}
+    }]"#;
+    let mut server2 = mockito::Server::new();
+    let mut source2 = jellyfin_source(server2.url(), paused, &mut server2);
+    assert!(source2.get_watching().is_none());
+}

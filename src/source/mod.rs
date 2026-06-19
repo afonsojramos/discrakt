@@ -1,5 +1,6 @@
 use chrono::{DateTime, FixedOffset};
 
+pub mod jellyfin;
 pub mod plex;
 pub mod trakt;
 
