@@ -676,10 +676,15 @@ pub fn load_config() -> Result<Env, String> {
         Some(path) => config.load(path).is_ok(),
         None => false,
     };
+    // Trakt is configured when there's a username (no-OAuth public profile) or
+    // an OAuth access token from the login flow (username then unnecessary).
     let trakt_configured = loaded
-        && config
+        && (config
             .get("Trakt API", "traktUser")
-            .is_some_and(|s| !s.is_empty());
+            .is_some_and(|s| !s.is_empty())
+            || config
+                .get("Trakt API", "OAuthAccessToken")
+                .is_some_and(|s| !s.is_empty()));
     let (server_url, token, _username) = if loaded {
         read_plex_config(&config)
     } else {
@@ -714,9 +719,12 @@ pub fn load_config() -> Result<Env, String> {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(detect_system_language);
 
+    let trakt_has_oauth = config
+        .get("Trakt API", "OAuthAccessToken")
+        .is_some_and(|s| !s.is_empty());
     let source = determine_source(
         &config,
-        !trakt_username.is_empty(),
+        !trakt_username.is_empty() || trakt_has_oauth,
         !plex_server_url.is_empty() && !plex_token.is_empty(),
     );
 

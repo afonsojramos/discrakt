@@ -66,7 +66,9 @@ pub struct SetupResult {
 /// Credentials submitted via the setup form.
 #[derive(Debug, Deserialize)]
 struct SubmittedCredentials {
-    #[serde(rename = "traktUser")]
+    // Optional: the OAuth device flow identifies the account, so the username is
+    // only needed for the manual no-OAuth (public profile) configuration.
+    #[serde(rename = "traktUser", default)]
     trakt_user: String,
     #[serde(rename = "traktClientID", default)]
     trakt_client_id: String,
@@ -104,7 +106,7 @@ enum OAuthState {
 const SUCCESS_GRACE_PERIOD: Duration = Duration::from_secs(8);
 
 /// Response for device code info sent to the browser.
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct DeviceCodeResponse {
     user_code: String,
     verification_url: String,
@@ -324,6 +326,9 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
     let oauth_state: Arc<Mutex<OAuthState>> = Arc::new(Mutex::new(OAuthState::Idle));
     // Track if a polling thread is already running to prevent duplicate spawns
     let polling_started = Arc::new(AtomicBool::new(false));
+    // The device code the active poller is tracking, returned to any resubmit so
+    // the displayed code always matches what the poller is waiting on.
+    let active_device_code: Arc<Mutex<Option<DeviceCodeResponse>>> = Arc::new(Mutex::new(None));
 
     // Open browser to setup page
     let url = format!("http://127.0.0.1:{port}");
@@ -401,14 +406,6 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                     }
                 };
 
-                // Validate required fields (only trakt_user is required)
-                if creds.trakt_user.is_empty() {
-                    let response = Response::from_string("Trakt Username is required")
-                        .with_status_code(StatusCode(400));
-                    let _ = request.respond(response);
-                    continue;
-                }
-
                 // Write credentials to config file
                 if let Err(e) = write_credentials(&creds) {
                     tracing::error!("Failed to write credentials: {}", e);
@@ -433,7 +430,35 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                     });
                 }
 
-                // Start OAuth device flow
+                // If a poller is already running (e.g. the page was reloaded and
+                // the form resubmitted), return the device code it is actually
+                // polling instead of minting a new one. Otherwise the UI would
+                // show a code the poller is not waiting on, and authorizing it
+                // would never complete.
+                if polling_started
+                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_err()
+                {
+                    let active = active_device_code.lock().ok().and_then(|g| g.clone());
+                    let response = match active {
+                        Some(device_code) => {
+                            let json = serde_json::to_string(&device_code).unwrap_or_default();
+                            Response::from_string(json).with_header(
+                                tiny_http::Header::from_bytes(
+                                    &b"Content-Type"[..],
+                                    &b"application/json"[..],
+                                )
+                                .unwrap(),
+                            )
+                        }
+                        None => Response::from_string("Authorization already starting, retry")
+                            .with_status_code(StatusCode(503)),
+                    };
+                    let _ = request.respond(response);
+                    continue;
+                }
+
+                // First submission: start the OAuth device flow and the poller.
                 match request_device_code(&client_id, None) {
                     Ok(device_code) => {
                         tracing::info!(
@@ -442,46 +467,34 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                             "Device code obtained, waiting for user authorization"
                         );
 
-                        // Store device code info for polling
                         if let Ok(mut state) = oauth_state.lock() {
                             *state = OAuthState::Pending;
                         }
 
-                        // Start background polling thread (only if not already started)
-                        if polling_started
-                            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-                            .is_ok()
-                        {
-                            let oauth_state_clone = Arc::clone(&oauth_state);
-                            let setup_complete_clone = Arc::clone(&setup_complete);
-                            let device_code_clone = device_code.clone();
-                            let client_id_clone = client_id.clone();
-
-                            thread::spawn(move || {
-                                poll_oauth_in_background(
-                                    device_code_clone,
-                                    client_id_clone,
-                                    oauth_state_clone,
-                                    setup_complete_clone,
-                                );
-                            });
-                        } else {
-                            tracing::warn!(
-                                "Polling thread already started, ignoring duplicate request"
-                            );
-                        }
-
-                        // Send response with device code info
                         let response_data = DeviceCodeResponse {
-                            user_code: device_code.user_code,
-                            verification_url: device_code.verification_url,
+                            user_code: device_code.user_code.clone(),
+                            verification_url: device_code.verification_url.clone(),
                             expires_in: device_code.expires_in,
                             interval: device_code.interval,
                         };
+                        if let Ok(mut guard) = active_device_code.lock() {
+                            *guard = Some(response_data.clone());
+                        }
+
+                        let oauth_state_clone = Arc::clone(&oauth_state);
+                        let setup_complete_clone = Arc::clone(&setup_complete);
+                        let client_id_clone = client_id.clone();
+                        thread::spawn(move || {
+                            poll_oauth_in_background(
+                                device_code,
+                                client_id_clone,
+                                oauth_state_clone,
+                                setup_complete_clone,
+                            );
+                        });
 
                         let response_json = serde_json::to_string(&response_data)
                             .unwrap_or_else(|_| r#"{"error":"serialization failed"}"#.to_string());
-
                         let response = Response::from_string(response_json).with_header(
                             tiny_http::Header::from_bytes(
                                 &b"Content-Type"[..],
@@ -492,6 +505,8 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                         let _ = request.respond(response);
                     }
                     Err(e) => {
+                        // Release the slot so a later submit can retry cleanly.
+                        polling_started.store(false, Ordering::SeqCst);
                         tracing::error!("Failed to request device code: {}", e);
                         let response = Response::from_string(format!("OAuth error: {e}"))
                             .with_status_code(StatusCode(500));
@@ -906,6 +921,14 @@ mod tests {
         let result: SubmittedCredentials = serde_json::from_str(json).unwrap();
         assert_eq!(result.trakt_user, "testuser");
         assert_eq!(result.trakt_client_id, ""); // Missing client ID defaults to empty
+    }
+
+    #[test]
+    fn test_parse_json_body_without_username() {
+        // The OAuth flow no longer requires a username, so an empty body parses.
+        let result: SubmittedCredentials = serde_json::from_str("{}").unwrap();
+        assert_eq!(result.trakt_user, "");
+        assert_eq!(result.trakt_client_id, "");
     }
 
     #[test]

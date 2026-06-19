@@ -31,8 +31,9 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function submitTrakt(traktUser: string): Promise<TraktSubmitResponse> {
-  return postJson<TraktSubmitResponse>("/submit", { traktUser });
+export function submitTrakt(): Promise<TraktSubmitResponse> {
+  // The OAuth device flow identifies the account; no username is needed.
+  return postJson<TraktSubmitResponse>("/submit", {});
 }
 
 export function submitPlex(input: {

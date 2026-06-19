@@ -45,13 +45,6 @@ export function App() {
     return () => clearInterval(id);
   }, [screen]);
 
-  // Auto-close the tab a moment after success.
-  useEffect(() => {
-    if (screen.name !== "success") return;
-    const id = setTimeout(() => window.close(), 2000);
-    return () => clearTimeout(id);
-  }, [screen]);
-
   return (
     <div className="flex min-h-svh items-center justify-center bg-background p-6 text-foreground">
       <Card className="w-full max-w-md">
@@ -116,19 +109,13 @@ function SetupScreen({ error, setError, onAuth, onDone }: SetupProps) {
 }
 
 function TraktForm({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
-  const [username, setUsername] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!username.trim()) {
-      setError("Please enter your Trakt username.");
-      return;
-    }
+  async function handleLogin() {
     setBusy(true);
     setError(null);
     try {
-      const result = await submitTrakt(username.trim());
+      const result = await submitTrakt();
       if (result.user_code && result.verification_url) {
         onAuth({
           link: `${result.verification_url}?code=${encodeURIComponent(result.user_code)}`,
@@ -147,33 +134,16 @@ function TraktForm({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="traktUser">Trakt username</Label>
-        <Input
-          id="traktUser"
-          autoComplete="username"
-          placeholder="Your Trakt username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <p className="text-xs text-muted-foreground">
-          Find it at{" "}
-          <a
-            className="underline"
-            href="https://trakt.tv/settings"
-            target="_blank"
-            rel="noreferrer"
-          >
-            trakt.tv/settings
-          </a>
-        </p>
-      </div>
-      <Button type="submit" disabled={busy}>
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Connect your Trakt account. You'll approve Discrakt in your browser, then any
+        app that scrobbles to Trakt shows up on Discord.
+      </p>
+      <Button onClick={handleLogin} disabled={busy}>
         {busy && <Loader2 className="animate-spin" />}
         Login with Trakt
       </Button>
-    </form>
+    </div>
   );
 }
 
@@ -311,12 +281,23 @@ function AuthScreen({ info, error }: { info: AuthInfo; error: string | null }) {
 }
 
 function SuccessScreen() {
+  const [seconds, setSeconds] = useState(5);
+
+  useEffect(() => {
+    if (seconds <= 0) {
+      window.close();
+      return;
+    }
+    const id = setTimeout(() => setSeconds((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [seconds]);
+
   return (
     <div className="flex flex-col items-center gap-3 text-center">
       <h2 className="text-xl font-semibold text-emerald-500">Setup complete!</h2>
       <p className="text-sm text-muted-foreground">Your account has been connected.</p>
       <p className="text-xs text-muted-foreground">
-        Discrakt is now starting. This tab will close.
+        Discrakt is now starting. This tab will close in {seconds} second{seconds === 1 ? "" : "s"}.
       </p>
     </div>
   );
