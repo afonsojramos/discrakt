@@ -25,10 +25,13 @@ Popular apps with Trakt integration include:
 - **Plex** — Use the [Plex-Trakt-Scrobbler](https://github.com/trakt/Plex-Trakt-Scrobbler) plugin
 - **Kodi**, **Infuse**, **VLC** and [many more](https://trakt.tv/apps)
 
-Once your app is scrobbling to Trakt, Discrakt will display your watch status on Discord — **wherever you are watching** (TV, phone, across the world), **in whatever app**, as long as you have a single device running **Discord** and **Discrakt**.
+Once your app is scrobbling to Trakt, Discrakt will display your watch status on Discord, **wherever you are watching** (TV, phone, across the world), **in whatever app**, as long as you have a single device running **Discord** and **Discrakt**.
+
+**Plex (direct)**: Alternatively, Discrakt can connect straight to your Plex Media Server and mirror your active session, with no Trakt account or external scrobbling needed. You provide your server URL and a Plex token during setup, and Discrakt polls the server for what you are currently playing. Movie and show artwork plus localized titles are still fetched from TMDB whenever Plex exposes a TMDB id.
 
 ## Features
 
+- Choose your source: **Trakt** (any app that scrobbles to it) or a **direct Plex Media Server** connection
 - 🌐 **Multilingual support** (Automatic system detection & Tray menu selection)
   - _Localized titles for movies and episodes are fetched via TMDB._
 - Separate Discord Rich Presence apps for Movies and TV Shows
@@ -48,9 +51,9 @@ Plex Rich Presence alternatives:
 
 1. Run the executable
 2. A setup wizard opens in your browser
-3. Enter your **Trakt username** — that's it!
-
-A default Trakt Client ID is provided, so you don't need to create your own API application.
+3. Pick your source:
+   - **Trakt**: enter your **Trakt username**. That's it. A default Trakt Client ID is provided, so you don't need to create your own API application.
+   - **Plex**: enter your **Plex Media Server URL** and a **[Plex token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)**. On a server with multiple users, add your Plex username so Discrakt mirrors the right session.
 
 _Note: Discord needs to be running on the same machine as Discrakt._
 
@@ -68,6 +71,20 @@ Discrakt creates `credentials.ini` for you during the setup wizard, so this file
 | Linux            | `$XDG_CONFIG_HOME`/discrakt or `$HOME`/.config/discrakt | /home/alice/.config/discrakt/credentials.ini                      |
 | macOS            | `$HOME`/Library/Application Support/discrakt            | /Users/Alice/Library/Application Support/discrakt/credentials.ini |
 | Windows          | `%APPDATA%`\discrakt                                    | C:\Users\Alice\AppData\Roaming\discrakt\credentials.ini           |
+
+**Using Plex instead of Trakt**: add a `[Plex]` section and select it with `[Discrakt] source = plex`:
+
+```ini
+[Discrakt]
+source = plex
+
+[Plex]
+serverUrl = http://192.168.1.10:32400
+token = your-x-plex-token
+username = your-plex-username
+```
+
+`username` is optional and only needed to disambiguate which user's session to mirror on a shared server. When `source` is omitted, Discrakt uses Trakt if a Trakt username is present, otherwise Plex.
 
 </details>
 
