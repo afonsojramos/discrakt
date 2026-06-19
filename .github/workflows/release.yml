@@ -38,6 +38,9 @@ jobs:
       - name: Install cargo-generate-rpm
         run: cargo install cargo-generate-rpm
 
+      - name: Set up Node and pnpm
+        uses: jdx/mise-action@v2
+
       - name: Build amd64
         run: cargo build --release
 
@@ -155,6 +158,9 @@ jobs:
           $version = "${{ github.event.release.tag_name }}".TrimStart('v')
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
+      - name: Set up Node and pnpm
+        uses: jdx/mise-action@v2
+
       - name: Build win64
         env:
           DISCRAKT_VERSION: ${{ steps.version.outputs.VERSION }}
@@ -209,6 +215,9 @@ jobs:
           VERSION="${{ github.event.release.tag_name }}"
           VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set up Node and pnpm
+        uses: jdx/mise-action@v2
 
       - name: Build arm64 (Apple Silicon)
         run: cargo build --release --target=aarch64-apple-darwin
