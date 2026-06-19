@@ -1584,3 +1584,48 @@ fn test_rating_cache_eviction_at_max_cache_size_boundary() {
         mock.assert();
     }
 }
+
+#[test]
+fn test_get_poster_caches_per_season() {
+    use discrakt::utils::MediaType;
+
+    let mut server = mockito::Server::new();
+    let s1 = server
+        .mock("GET", "/3/tv/100/season/1/images")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"posters": [{"file_path": "/s1.jpg"}]}"#)
+        .create();
+    let s2 = server
+        .mock("GET", "/3/tv/100/season/2/images")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"posters": [{"file_path": "/s2.jpg"}]}"#)
+        .create();
+
+    let mut trakt = Trakt::with_config(TraktConfig {
+        client_id: "c".to_string(),
+        username: "u".to_string(),
+        oauth_access_token: None,
+        trakt_base_url: None,
+        tmdb_base_url: Some(server.url()),
+        language: None,
+    });
+
+    // Same show, two seasons: must hit distinct endpoints, not share one cache slot.
+    let p1 = trakt.get_poster(MediaType::Show, "100".to_string(), "tok".to_string(), 1);
+    let p2 = trakt.get_poster(MediaType::Show, "100".to_string(), "tok".to_string(), 2);
+
+    s1.assert();
+    s2.assert();
+    assert_eq!(
+        p1.as_deref(),
+        Some("https://image.tmdb.org/t/p/w600_and_h600_bestv2/s1.jpg")
+    );
+    assert_eq!(
+        p2.as_deref(),
+        Some("https://image.tmdb.org/t/p/w600_and_h600_bestv2/s2.jpg")
+    );
+}

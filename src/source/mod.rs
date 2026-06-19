@@ -53,7 +53,9 @@ pub struct Watching {
 ///
 /// Implementors poll their backend and return a fully-enriched [`Watching`], or
 /// `None` when nothing is playing or an error occurred.
-pub trait Source {
+/// `Send` is required because the polling loop owns a `Box<dyn Source>` inside a
+/// spawned thread (see `main`).
+pub trait Source: Send {
     fn get_watching(&mut self) -> Option<Watching>;
 
     /// Updates the preferred language for localized titles. No-op by default.

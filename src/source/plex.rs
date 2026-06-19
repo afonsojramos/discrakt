@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use chrono::Utc;
+use chrono::{DateTime, FixedOffset, Utc};
 use serde::Deserialize;
 use ureq::Agent;
 
@@ -167,40 +167,34 @@ impl PlexSource {
     }
 
     fn enrich(&mut self, meta: &PlexMetadata) -> Option<Watching> {
-        // Plex reports the current position; derive a precise progress window.
-        let now = Utc::now();
-        let offset_ms = meta.view_offset.unwrap_or(0).max(0);
-        let duration_ms = meta.duration.unwrap_or(0).max(0);
-        let remaining_ms = (duration_ms - offset_ms).max(0);
-        let started_at = (now - chrono::Duration::milliseconds(offset_ms)).fixed_offset();
-        let expires_at = (now + chrono::Duration::milliseconds(remaining_ms)).fixed_offset();
-
-        let token = self.tmdb_token.clone();
+        let token = &self.tmdb_token;
         let imdb = extract_guid(&meta.guids, "imdb://");
         let imdb_url = imdb
             .as_ref()
             .map(|imdb| format!("https://www.imdb.com/title/{}", imdb));
 
-        match meta.kind.as_str() {
+        let watching = match meta.kind.as_str() {
             "movie" => {
                 let mut title = meta.title.clone().unwrap_or_default();
-                let tmdb_id =
-                    extract_guid(&meta.guids, "tmdb://").and_then(|id| id.parse::<u32>().ok());
+                let tmdb_id = extract_tmdb_id(&meta.guids);
                 let mut poster_url = None;
 
                 if let Some(id) = tmdb_id {
-                    poster_url =
-                        self.tmdb
-                            .get_poster(MediaType::Movie, id.to_string(), token.clone(), 0);
+                    poster_url = self
+                        .tmdb
+                        .get_poster(MediaType::Movie, id.to_string(), token, 0);
                     let localized =
                         self.tmdb
-                            .get_title(MediaType::Movie, id.to_string(), &token, None, None);
+                            .get_title(MediaType::Movie, id.to_string(), token, None, None);
                     if !localized.is_empty() {
                         title = localized;
                     }
                 }
 
-                Some(Watching {
+                // Anchor the progress window after enrichment so TMDB latency
+                // does not inflate the reported progress.
+                let (started_at, expires_at) = plex_window(meta);
+                Watching {
                     kind: MediaKind::Movie,
                     title,
                     year: meta.year,
@@ -219,7 +213,7 @@ impl PlexSource {
                     started_at,
                     expires_at,
                     runtime_minutes: None,
-                })
+                }
             }
             "episode" => {
                 let mut title = meta.grandparent_title.clone().unwrap_or_default();
@@ -233,31 +227,36 @@ impl PlexSource {
                     .and_then(extract_tmdb_from_str);
                 let mut poster_url = None;
 
-                if let (Some(id), Some(s)) = (show_tmdb, season) {
-                    poster_url =
-                        self.tmdb
-                            .get_poster(MediaType::Show, id.to_string(), token.clone(), s);
+                if let Some(id) = show_tmdb {
+                    // The localized show title needs only the show id.
                     let localized_show =
                         self.tmdb
-                            .get_title(MediaType::Show, id.to_string(), &token, None, None);
+                            .get_title(MediaType::Show, id.to_string(), token, None, None);
                     if !localized_show.is_empty() {
                         title = localized_show;
                     }
-                    if let Some(n) = number {
-                        let localized_episode = self.tmdb.get_title(
-                            MediaType::Show,
-                            id.to_string(),
-                            &token,
-                            Some(s),
-                            Some(n),
-                        );
-                        if !localized_episode.is_empty() {
-                            episode_title = localized_episode;
+                    // Artwork and the localized episode title are season-specific.
+                    if let Some(s) = season {
+                        poster_url =
+                            self.tmdb
+                                .get_poster(MediaType::Show, id.to_string(), token, s);
+                        if let Some(n) = number {
+                            let localized_episode = self.tmdb.get_title(
+                                MediaType::Show,
+                                id.to_string(),
+                                token,
+                                Some(s),
+                                Some(n),
+                            );
+                            if !localized_episode.is_empty() {
+                                episode_title = localized_episode;
+                            }
                         }
                     }
                 }
 
-                Some(Watching {
+                let (started_at, expires_at) = plex_window(meta);
+                Watching {
                     kind: MediaKind::Episode,
                     title,
                     year: meta.year,
@@ -276,13 +275,15 @@ impl PlexSource {
                     started_at,
                     expires_at,
                     runtime_minutes: None,
-                })
+                }
             }
             other => {
                 tracing::debug!("Ignoring non-video Plex session type: {}", other);
-                None
+                return None;
             }
-        }
+        };
+
+        Some(watching)
     }
 }
 
@@ -290,15 +291,13 @@ impl Source for PlexSource {
     fn get_watching(&mut self) -> Option<Watching> {
         let sessions = self.fetch_sessions()?;
 
-        // Find the configured user's actively-playing video session. We collect
-        // an owned copy of the matched metadata to release the borrow on
-        // `sessions` before the mutable `enrich` call.
-        let index = sessions
+        // Take ownership of the configured user's actively-playing video session,
+        // releasing the borrow on `sessions` before the mutable `enrich` call.
+        let meta = sessions
             .media_container
             .metadata
-            .iter()
-            .position(|meta| Self::is_playing(meta) && self.matches_user(meta))?;
-        let meta = sessions.media_container.metadata.into_iter().nth(index)?;
+            .into_iter()
+            .find(|meta| Self::is_playing(meta) && self.matches_user(meta))?;
 
         self.enrich(&meta)
     }
@@ -308,16 +307,43 @@ impl Source for PlexSource {
     }
 }
 
+/// Default runtime assumed when Plex omits a duration, so a session without
+/// timing still displays instead of being treated as already finished.
+const PLEX_DEFAULT_RUNTIME_MS: i64 = 2 * 60 * 60 * 1000;
+
+/// Derives a progress window (start, expiry) from a Plex session's position and
+/// duration. Sampled at call time so it reflects the moment the result is built,
+/// not an earlier point before any enrichment I/O.
+fn plex_window(meta: &PlexMetadata) -> (DateTime<FixedOffset>, DateTime<FixedOffset>) {
+    let now = Utc::now();
+    let offset_ms = meta.view_offset.unwrap_or(0).max(0);
+    let duration_ms = match meta.duration.unwrap_or(0).max(0) {
+        0 => PLEX_DEFAULT_RUNTIME_MS,
+        duration => duration,
+    };
+    let remaining_ms = (duration_ms - offset_ms).max(0);
+    let started_at = (now - chrono::Duration::milliseconds(offset_ms)).fixed_offset();
+    let expires_at = (now + chrono::Duration::milliseconds(remaining_ms)).fixed_offset();
+    (started_at, expires_at)
+}
+
 /// Extracts the value of a Plex `Guid` with the given scheme prefix
-/// (e.g. `"tmdb://"`), returning the part after the prefix.
+/// (e.g. `"imdb://"`), returning the part after the prefix.
 fn extract_guid(guids: &[PlexGuid], scheme: &str) -> Option<String> {
     guids
         .iter()
         .find_map(|guid| guid.id.strip_prefix(scheme).map(str::to_string))
 }
 
-/// Extracts a TMDB numeric id embedded anywhere in a guid string, tolerating the
-/// various agent formats Plex uses (e.g. `tmdb://1396`).
+/// Extracts the first TMDB id from a Plex `Guid` list.
+fn extract_tmdb_id(guids: &[PlexGuid]) -> Option<u32> {
+    guids
+        .iter()
+        .find_map(|guid| extract_tmdb_from_str(&guid.id))
+}
+
+/// Extracts a TMDB numeric id from a guid string of the form `tmdb://<id>`,
+/// tolerating a trailing query string (e.g. `tmdb://1396?lang=en`).
 fn extract_tmdb_from_str(value: &str) -> Option<u32> {
     let start = value.find("tmdb://")? + "tmdb://".len();
     let digits: String = value[start..]

@@ -407,3 +407,73 @@ fn test_plex_source_returns_none_when_no_sessions() {
 
     assert!(source.get_watching().is_none());
 }
+
+#[test]
+fn test_plex_source_missing_duration_still_displays() {
+    // A session with no duration/viewOffset must not collapse to a zero-length
+    // window (which main would treat as already expired).
+    let body = r#"{
+        "MediaContainer": {
+            "Metadata": [{
+                "type": "movie",
+                "title": "Some Movie",
+                "year": 2020,
+                "Guid": [],
+                "User": {"title": "alice"},
+                "Player": {"state": "playing"}
+            }]
+        }
+    }"#;
+    let mut server = mockito::Server::new();
+    let url = server.url();
+    let mut source = plex_source(url, body, &mut server);
+
+    let result = source.get_watching().expect("movie should be playing");
+
+    assert_eq!(result.title, "Some Movie");
+    assert_eq!(result.poster_url, None);
+    // Window must be well into the future so the session is not seen as expired.
+    let window = result.expires_at.timestamp() - result.started_at.timestamp();
+    assert!(window >= 3600, "window was only {window}s");
+}
+
+#[test]
+fn test_plex_source_episode_without_season_still_localizes_title() {
+    // No parentIndex (season): the show title should still be localized via TMDB,
+    // even though no poster or localized episode title can be resolved.
+    let body = r#"{
+        "MediaContainer": {
+            "Metadata": [{
+                "type": "episode",
+                "title": "Felina",
+                "grandparentTitle": "BB",
+                "index": 16,
+                "duration": 3120000,
+                "viewOffset": 60000,
+                "grandparentGuid": "tmdb://1396",
+                "Guid": [],
+                "User": {"title": "alice"},
+                "Player": {"state": "playing"}
+            }]
+        }
+    }"#;
+    let mut server = mockito::Server::new();
+    let url = server.url();
+
+    let show_title = server
+        .mock("GET", "/3/tv/1396")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"name": "Breaking Bad"}"#)
+        .create();
+
+    let mut source = plex_source(url, body, &mut server);
+    let result = source.get_watching().expect("episode should be playing");
+
+    show_title.assert();
+    assert_eq!(result.title, "Breaking Bad"); // localized, overriding "BB"
+    assert_eq!(result.season, None);
+    assert_eq!(result.poster_url, None);
+    assert_eq!(result.episode_title.as_deref(), Some("Felina"));
+}

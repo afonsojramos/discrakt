@@ -23,7 +23,7 @@ impl TraktSource {
     fn enrich(&mut self, response: TraktWatchingResponse) -> Option<Watching> {
         let started_at = DateTime::parse_from_rfc3339(&response.started_at).ok()?;
         let expires_at = DateTime::parse_from_rfc3339(&response.expires_at).ok()?;
-        let token = self.tmdb_token.clone();
+        let token = &self.tmdb_token;
 
         match response.r#type.as_str() {
             "movie" => {
@@ -39,13 +39,13 @@ impl TraktSource {
                         let poster = self.trakt.tmdb_mut().get_poster(
                             MediaType::Movie,
                             tmdb_id.to_string(),
-                            token.clone(),
+                            token,
                             0,
                         );
                         let localized = self.trakt.tmdb_mut().get_title(
                             MediaType::Movie,
                             tmdb_id.to_string(),
-                            &token,
+                            token,
                             None,
                             None,
                         );
@@ -102,13 +102,13 @@ impl TraktSource {
                     poster_url = self.trakt.tmdb_mut().get_poster(
                         MediaType::Show,
                         tmdb_id.to_string(),
-                        token.clone(),
+                        token,
                         episode.season,
                     );
                     let localized_show = self.trakt.tmdb_mut().get_title(
                         MediaType::Show,
                         tmdb_id.to_string(),
-                        &token,
+                        token,
                         None,
                         None,
                     );
@@ -118,7 +118,7 @@ impl TraktSource {
                     let localized_episode = self.trakt.tmdb_mut().get_title(
                         MediaType::Show,
                         tmdb_id.to_string(),
-                        &token,
+                        token,
                         Some(episode.season),
                         Some(episode.number),
                     );

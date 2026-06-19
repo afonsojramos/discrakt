@@ -121,11 +121,18 @@ impl Tmdb {
         &mut self,
         media_type: MediaType,
         tmdb_id: String,
-        tmdb_token: String,
+        tmdb_token: &str,
         season_id: u8,
     ) -> Option<String> {
+        // Posters are season-specific for shows, so the cache key must include
+        // the season to avoid returning season 1's art for every later season.
+        let cache_key = match media_type {
+            MediaType::Movie => tmdb_id.clone(),
+            MediaType::Show => format!("{tmdb_id}_S{season_id}"),
+        };
+
         // Check cache first - this should happen BEFORE any retry logic
-        if let Some(image_url) = self.image_cache.get(&tmdb_id) {
+        if let Some(image_url) = self.image_cache.get(&cache_key) {
             return Some(image_url.clone());
         }
 
@@ -165,7 +172,7 @@ impl Tmdb {
                         let image_url =
                             format!("https://image.tmdb.org/t/p/w600_and_h600_bestv2{}", path);
                         // Cache the image URL (LRU will evict oldest if full)
-                        self.image_cache.put(tmdb_id, image_url.clone());
+                        self.image_cache.put(cache_key, image_url.clone());
                         Some(image_url)
                     }
                     None => {

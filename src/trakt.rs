@@ -278,7 +278,7 @@ impl Trakt {
         season_id: u8,
     ) -> Option<String> {
         self.tmdb
-            .get_poster(media_type, tmdb_id, tmdb_token, season_id)
+            .get_poster(media_type, tmdb_id, &tmdb_token, season_id)
     }
 
     /// Fetches the rating for a movie from Trakt.tv.

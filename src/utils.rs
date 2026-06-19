@@ -824,8 +824,11 @@ pub fn get_watch_stats(watching: &Watching) -> WatchStats {
         .signed_duration_since(start_date)
         .num_seconds()
         .max(1);
-    let percentage =
-        Utc::now().signed_duration_since(start_date).num_seconds() as f32 / total_seconds as f32;
+    // Clamp to [0, 1] so clock skew or a stale position never reports a
+    // nonsensical percentage (e.g. negative or above 100%).
+    let percentage = (Utc::now().signed_duration_since(start_date).num_seconds() as f32
+        / total_seconds as f32)
+        .clamp(0.0, 1.0);
     let watch_percentage = format!("{:.2}%", percentage * 100.0);
 
     WatchStats {
