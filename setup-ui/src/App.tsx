@@ -325,11 +325,14 @@ function JellyfinPane({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
     setError(null);
     try {
       const data = await startJellyfinLogin(serverUrl.trim());
+      const base = serverUrl.trim().replace(/\/$/, "");
       onAuth({
         code: data.code,
-        link: `${serverUrl.trim().replace(/\/$/, "")}/web/#/quickconnect`,
+        // The Quick Connect page prefills its input from `?code=`, so the user
+        // only has to click Authorize (the code below is a manual fallback).
+        link: `${base}/web/#/quickconnect?code=${encodeURIComponent(data.code)}`,
         buttonLabel: "Open Jellyfin Quick Connect",
-        hint: "Open Quick Connect in Jellyfin and enter this code:",
+        hint: "Click below and approve in Jellyfin (the code is prefilled):",
         expiresInMinutes: 5,
         intervalSeconds: data.interval ?? 2,
       });
