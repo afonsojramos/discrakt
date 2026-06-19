@@ -145,7 +145,8 @@ struct Connection {
     relay: bool,
 }
 
-/// Scores a connection: prefer owned, local, non-relay, HTTPS.
+/// Scores a connection for preference order: prefer owned, non-relay, local,
+/// HTTPS. This only orders probing; reachability is what ultimately decides.
 fn connection_score(owned: bool, conn: &Connection) -> u8 {
     let mut score = 0;
     if owned {
@@ -163,7 +164,25 @@ fn connection_score(owned: bool, conn: &Connection) -> u8 {
     score
 }
 
-/// Discovers the best Plex server connection for the authenticated account.
+/// Returns true if the connection responds at all (any HTTP status counts as
+/// reachable; only network/timeout failures count as unreachable).
+fn connection_reachable(agent: &Agent, uri: &str, token: &str) -> bool {
+    match agent
+        .get(&format!("{uri}/identity"))
+        .header("X-Plex-Token", token)
+        .call()
+    {
+        Ok(_) | Err(ureq::Error::StatusCode(_)) => true,
+        Err(_) => false,
+    }
+}
+
+/// Discovers a reachable Plex server connection for the authenticated account.
+///
+/// Plex advertises several connections (LAN, WAN, relay) without knowing which
+/// the client can actually reach, so we order them by preference and then probe
+/// each, returning the first that responds. A higher-preference connection that
+/// times out (e.g. a LAN address from off the network) is skipped.
 pub fn discover_plex_server(
     auth_token: &str,
     client_id: &str,
@@ -190,25 +209,50 @@ pub fn discover_plex_server(
         Err(e) => return Err(format!("Network error: {e}")),
     };
 
-    // Pick the highest-scoring (server, connection) pair.
-    let best = resources
+    // Collect (score, uri, token) candidates, ordered by preference.
+    let mut candidates: Vec<(u8, String, String)> = resources
         .iter()
         .filter(|r| r.provides.split(',').any(|p| p.trim() == "server"))
         .filter_map(|r| r.access_token.as_ref().map(|token| (r, token)))
         .flat_map(|(r, token)| {
-            r.connections
-                .iter()
-                .map(move |conn| (connection_score(r.owned, conn), conn, token))
+            r.connections.iter().map(move |conn| {
+                (
+                    connection_score(r.owned, conn),
+                    conn.uri.clone(),
+                    token.clone(),
+                )
+            })
         })
-        .max_by_key(|(score, _, _)| *score);
+        .collect();
 
-    match best {
-        Some((_, conn, token)) => Ok(PlexServer {
-            uri: conn.uri.clone(),
-            access_token: token.clone(),
-        }),
-        None => Err("No Plex servers found for this account".to_string()),
+    if candidates.is_empty() {
+        return Err("No Plex servers found for this account".to_string());
     }
+    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+
+    // Probe each in preference order; use the first that responds.
+    let probe = Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(3)))
+        .user_agent(user_agent())
+        .build()
+        .into();
+    for (_, uri, token) in &candidates {
+        if connection_reachable(&probe, uri, token) {
+            return Ok(PlexServer {
+                uri: uri.clone(),
+                access_token: token.clone(),
+            });
+        }
+    }
+
+    // Nothing responded; fall back to the most-preferred so config is still
+    // written (the user may be able to reach it later, or edit it manually).
+    let (_, uri, token) = &candidates[0];
+    tracing::warn!("No Plex connection responded to probing; using {}", uri);
+    Ok(PlexServer {
+        uri: uri.clone(),
+        access_token: token.clone(),
+    })
 }
 
 #[derive(Deserialize)]

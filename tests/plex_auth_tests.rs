@@ -78,17 +78,22 @@ fn test_poll_plex_pin_expired() {
 }
 
 #[test]
-fn test_discover_plex_server_prefers_local_direct_over_relay() {
+fn test_discover_plex_server_skips_unreachable_and_picks_reachable() {
     let mut server = mockito::Server::new();
-    let body = r#"[
-        {"name":"Client","provides":"client","owned":true,"connections":[]},
-        {"name":"My Server","provides":"server","owned":true,"accessToken":"srvtoken",
+    let reachable = server.url(); // the mock server is reachable
+                                  // Higher-preference (local) connection points at a dead port; the reachable
+                                  // one is lower-preference. Probing must override the score.
+    let body = format!(
+        r#"[
+        {{"name":"Client","provides":"client","owned":true,"connections":[]}},
+        {{"name":"My Server","provides":"server","owned":true,"accessToken":"srvtoken",
          "connections":[
-            {"protocol":"https","uri":"https://relay.plex.direct:443","local":false,"relay":true},
-            {"protocol":"https","uri":"https://1-2-3-4.hash.plex.direct:32400","local":true,"relay":false}
-         ]}
-    ]"#;
-    let mock = server
+            {{"uri":"http://127.0.0.1:1","local":true,"relay":false}},
+            {{"uri":"{reachable}","local":false,"relay":false}}
+         ]}}
+    ]"#
+    );
+    server
         .mock("GET", "/api/v2/resources")
         .match_query(mockito::Matcher::Any)
         .match_header("x-plex-token", "tok")
@@ -96,16 +101,42 @@ fn test_discover_plex_server_prefers_local_direct_over_relay() {
         .with_header("content-type", "application/json")
         .with_body(body)
         .create();
+    // Reachability probe hits /identity on the reachable connection.
+    server.mock("GET", "/identity").with_status(200).create();
 
     let result = discover_plex_server("tok", "cid", Some(&server.url())).expect("server");
-    mock.assert();
     assert_eq!(
         result,
         PlexServer {
-            uri: "https://1-2-3-4.hash.plex.direct:32400".to_string(),
+            uri: reachable,
             access_token: "srvtoken".to_string(),
         }
     );
+}
+
+#[test]
+fn test_discover_plex_server_falls_back_to_best_when_none_reachable() {
+    let mut server = mockito::Server::new();
+    // Both connections are dead; the highest-scored (local) is returned as a
+    // best-effort fallback so a config is still written.
+    let body = r#"[
+        {"name":"My Server","provides":"server","owned":true,"accessToken":"srvtoken",
+         "connections":[
+            {"uri":"http://127.0.0.1:2","local":false,"relay":true},
+            {"uri":"http://127.0.0.1:1","local":true,"relay":false}
+         ]}
+    ]"#;
+    server
+        .mock("GET", "/api/v2/resources")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .create();
+
+    let result = discover_plex_server("tok", "cid", Some(&server.url())).expect("server");
+    assert_eq!(result.uri, "http://127.0.0.1:1"); // local scored highest
+    assert_eq!(result.access_token, "srvtoken");
 }
 
 #[test]
