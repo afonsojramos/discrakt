@@ -72,7 +72,7 @@ impl Tray {
 
         let tray_icon = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
-            .with_tooltip("Discrakt - Trakt to Discord")
+            .with_tooltip("Discrakt - Trakt/Plex to Discord")
             .with_icon(icon)
             .build()?;
 

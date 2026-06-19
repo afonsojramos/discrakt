@@ -10,7 +10,7 @@
 // =============================================================================
 
 const APP_NAME: &str = "Discrakt";
-const APP_TAGLINE: &str = "Trakt to Discord Rich Presence";
+const APP_TAGLINE: &str = "Trakt/Plex to Discord Rich Presence";
 const GITHUB_URL: &str = "https://github.com/afonsojramos/discrakt";
 
 const TRAKT_SETTINGS_URL: &str = "https://trakt.tv/settings";

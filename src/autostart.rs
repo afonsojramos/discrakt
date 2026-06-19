@@ -234,7 +234,7 @@ mod linux {
             r#"[Desktop Entry]
 Type=Application
 Name=Discrakt
-Comment=Trakt to Discord Rich Presence
+Comment=Trakt/Plex to Discord Rich Presence
 Exec={}
 Icon=discrakt
 Terminal=false

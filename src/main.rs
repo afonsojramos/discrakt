@@ -187,7 +187,7 @@ fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
 fn print_help() {
     let log_dir = log_dir_path();
     println!(
-        "Discrakt - Trakt to Discord Rich Presence
+        "Discrakt - Trakt/Plex to Discord Rich Presence
 
 Usage: discrakt [OPTIONS]
 
@@ -199,7 +199,8 @@ Options:
     --help, -h           Show this help message
 
 When run without options, Discrakt starts normally and runs in
-the system tray, updating your Discord status based on Trakt.
+the system tray, updating your Discord status based on your
+configured source (Trakt or Plex).
 
 Logging:
     Logs are written to: {}
