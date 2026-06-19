@@ -667,26 +667,8 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 let _ = request.respond(response);
             }
 
-            ("GET", "/favicon.ico" | "/favicon.png") => {
-                // Serve the Discrakt icon as favicon
-                static ICON_BYTES: &[u8] = include_bytes!("../assets/icon.png");
-                let response = Response::from_data(ICON_BYTES).with_header(
-                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"image/png"[..]).unwrap(),
-                );
-                let _ = request.respond(response);
-            }
-
-            ("GET", "/logo.svg") => {
-                // Serve the Discrakt wordmark logo
-                static LOGO_BYTES: &[u8] = include_bytes!("../../assets/discrakt-wordmark.svg");
-                let response = Response::from_data(LOGO_BYTES).with_header(
-                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"image/svg+xml"[..])
-                        .unwrap(),
-                );
-                let _ = request.respond(response);
-            }
-
-            // Serve embedded static assets (JS/CSS/fonts) for any other GET.
+            // Serve embedded static assets (JS/CSS/fonts, plus logo.svg and
+            // favicon.png from setup-ui/public) for any other GET.
             ("GET", path) => {
                 let response = serve_embedded(path.trim_start_matches('/')).unwrap_or_else(|| {
                     Response::from_data(b"Not Found".to_vec()).with_status_code(StatusCode(404))
