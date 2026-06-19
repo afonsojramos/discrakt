@@ -1,6 +1,7 @@
 pub mod autostart;
 pub mod discord;
 pub mod metadata;
+pub mod plex_auth;
 pub mod retry;
 pub mod setup;
 pub mod source;

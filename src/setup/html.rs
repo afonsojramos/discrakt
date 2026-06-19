@@ -345,6 +345,53 @@ fn script() -> &'static str {
         document.getElementById('tab-trakt').addEventListener('click', () => selectSource('trakt'));
         document.getElementById('tab-plex').addEventListener('click', () => selectSource('plex'));
 
+        document.getElementById('plexLoginBtn').addEventListener('click', async function() {
+            const errorDiv = document.getElementById('error');
+            const btn = this;
+            errorDiv.classList.remove('show');
+            btn.disabled = true;
+            btn.textContent = 'Starting...';
+
+            try {
+                const response = await fetch('/plex-login/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}',
+                });
+
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+
+                const data = await response.json();
+                // Best-effort auto-open; the link is shown regardless in case the
+                // popup is blocked.
+                window.open(data.authUrl, '_blank');
+                showPlexWaiting(data.authUrl);
+                pollIntervalMs = (data.interval || 2) * 1000;
+                startPolling();
+            } catch (err) {
+                errorDiv.textContent = 'Could not start Plex login: ' + (err.message || err);
+                errorDiv.classList.add('show');
+                btn.disabled = false;
+                btn.textContent = 'Login with Plex';
+            }
+        });
+
+        function showPlexWaiting(authUrl) {
+            document.getElementById('setupForm-container').classList.add('hidden');
+            document.getElementById('auth-container').classList.add('show');
+
+            // Repurpose the shared auth screen: hide the typed-code hint and point
+            // the button at the Plex approval URL.
+            document.getElementById('codeHint').style.display = 'none';
+            document.getElementById('deviceCode').style.display = 'none';
+            const link = document.getElementById('traktLink');
+            link.href = authUrl;
+            link.textContent = 'Open Plex & Authorize';
+            document.getElementById('expiresIn').textContent = '30';
+        }
+
         document.getElementById('plexForm').addEventListener('submit', async function(e) {
             e.preventDefault();
 
@@ -568,6 +615,8 @@ fn setup_form() -> String {
             </div>
 
             <div id="plex-pane" style="display:none;">
+                <button type="button" id="plexLoginBtn">Login with Plex</button>
+                <div class="help-text" style="text-align:center; margin:14px 0;">or enter your server details manually</div>
                 <form id="plexForm" method="POST" action="/submit-plex">
                     <div class="form-group">
                         <label for="plexServerUrl" class="required">Plex Server URL</label>
@@ -605,7 +654,7 @@ fn auth_screen() -> String {
         <div id="auth-container" class="auth-container">
             <div class="auth-instructions">
                 <p>Click the button below to authorize Discrakt.</p>
-                <p style="font-size: 0.9rem; color: #888;">
+                <p id="codeHint" style="font-size: 0.9rem; color: #888;">
                     Verify that the code on Trakt matches this one:
                 </p>
             </div>

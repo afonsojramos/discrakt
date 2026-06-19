@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 use tiny_http::{Response, Server, StatusCode};
 
 use super::html;
+use crate::plex_auth::{
+    self, discover_plex_server, fetch_plex_username, poll_plex_pin, PlexPin, PlexPinPoll,
+};
 use crate::utils::{
     poll_device_token, request_device_code, save_oauth_tokens, set_restrictive_permissions,
     DeviceTokenPollResult, TraktDeviceCode, DEFAULT_TRAKT_CLIENT_ID,
@@ -528,6 +531,67 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 let _ = request.respond(response);
             }
 
+            ("POST", "/plex-login/start") => {
+                // Begin the "Login with Plex" PIN flow: request a PIN, then poll
+                // for authorization in the background (reusing the OAuth state
+                // machine and /status endpoint the browser already polls).
+                let client_id = plex_auth::generate_client_identifier();
+                match plex_auth::request_plex_pin(&client_id, None) {
+                    Ok(pin) => {
+                        let auth_url = plex_auth::build_auth_url(&client_id, &pin.code);
+
+                        if let Ok(mut state) = oauth_state.lock() {
+                            *state = OAuthState::Pending;
+                        }
+
+                        if polling_started
+                            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                            .is_ok()
+                        {
+                            let oauth_state_clone = Arc::clone(&oauth_state);
+                            let setup_complete_clone = Arc::clone(&setup_complete);
+                            let result_clone = Arc::clone(&result);
+                            let pin_clone = pin.clone();
+                            let client_id_clone = client_id.clone();
+                            thread::spawn(move || {
+                                poll_plex_in_background(
+                                    client_id_clone,
+                                    pin_clone,
+                                    oauth_state_clone,
+                                    setup_complete_clone,
+                                    result_clone,
+                                );
+                            });
+                        } else {
+                            tracing::warn!("Login already in progress, ignoring duplicate start");
+                        }
+
+                        let response_json = serde_json::json!({
+                            "authUrl": auth_url,
+                            "code": pin.code,
+                            "expiresIn": pin.expires_in,
+                            "interval": 2,
+                        })
+                        .to_string();
+                        let response = Response::from_string(response_json).with_header(
+                            tiny_http::Header::from_bytes(
+                                &b"Content-Type"[..],
+                                &b"application/json"[..],
+                            )
+                            .unwrap(),
+                        );
+                        let _ = request.respond(response);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to start Plex login: {}", e);
+                        let response =
+                            Response::from_string(format!("Failed to start Plex login: {e}"))
+                                .with_status_code(StatusCode(500));
+                        let _ = request.respond(response);
+                    }
+                }
+            }
+
             ("GET", "/status") => {
                 // Return the current OAuth status
                 // On mutex poisoning, reset to Idle state for safety
@@ -614,6 +678,79 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
         .ok()
         .and_then(|guard| guard.clone())
         .ok_or_else(|| "Setup was cancelled or failed".into())
+}
+
+/// Poll for "Login with Plex" authorization in the background.
+///
+/// On success, discovers the user's server and username, writes the Plex
+/// configuration, and signals setup completion via the shared OAuth state.
+#[allow(clippy::needless_pass_by_value)]
+fn poll_plex_in_background(
+    client_id: String,
+    pin: PlexPin,
+    oauth_state: Arc<Mutex<OAuthState>>,
+    setup_complete: Arc<AtomicBool>,
+    result: Arc<Mutex<Option<SetupResult>>>,
+) {
+    // Cap the wait at the PIN's lifetime (Plex returns ~1800s).
+    let deadline = Instant::now() + Duration::from_secs(pin.expires_in.min(1800));
+    let set_state = |s: OAuthState| {
+        if let Ok(mut guard) = oauth_state.lock() {
+            *guard = s;
+        }
+    };
+
+    while Instant::now() < deadline {
+        thread::sleep(Duration::from_secs(2));
+
+        match poll_plex_pin(&client_id, pin.id, None) {
+            PlexPinPoll::Authorized(token) => {
+                let server = match discover_plex_server(&token, &client_id, None) {
+                    Ok(server) => server,
+                    Err(e) => {
+                        tracing::error!("Plex server discovery failed: {}", e);
+                        set_state(OAuthState::Error(format!("Server discovery failed: {e}")));
+                        return;
+                    }
+                };
+
+                let username = fetch_plex_username(&token, &client_id, None).unwrap_or_default();
+                let creds = PlexSubmitted {
+                    server_url: server.uri,
+                    token: server.access_token,
+                    username,
+                };
+
+                if let Err(e) = write_plex_credentials(&creds) {
+                    tracing::error!("Failed to write Plex credentials: {}", e);
+                    set_state(OAuthState::Error(format!("Failed to save: {e}")));
+                    return;
+                }
+
+                if let Ok(mut guard) = result.lock() {
+                    *guard = Some(SetupResult {
+                        trakt_username: String::new(),
+                        trakt_client_id: String::new(),
+                    });
+                }
+                set_state(OAuthState::Success(Instant::now()));
+                setup_complete.store(true, Ordering::SeqCst);
+                tracing::info!("Plex login complete");
+                return;
+            }
+            PlexPinPoll::Pending => {}
+            PlexPinPoll::Error(e) if e.contains("expired") => {
+                set_state(OAuthState::Expired);
+                return;
+            }
+            PlexPinPoll::Error(e) => {
+                // Transient error: keep polling until the deadline.
+                tracing::debug!("Plex PIN poll error (will retry): {}", e);
+            }
+        }
+    }
+
+    set_state(OAuthState::Expired);
 }
 
 /// Poll for OAuth authorization in the background.
@@ -781,6 +918,8 @@ mod tests {
         assert!(page.contains("action=\"/submit-plex\""));
         assert!(page.contains("id=\"setupForm\""));
         assert!(page.contains("id=\"tab-plex\""));
+        assert!(page.contains("id=\"plexLoginBtn\""));
+        assert!(page.contains("/plex-login/start"));
     }
 
     #[test]

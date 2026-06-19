@@ -1,0 +1,140 @@
+// Tests for the "Login with Plex" PIN flow and server discovery.
+
+use discrakt::plex_auth::{
+    build_auth_url, discover_plex_server, fetch_plex_username, poll_plex_pin, request_plex_pin,
+    PlexPinPoll, PlexServer,
+};
+
+#[test]
+fn test_build_auth_url_embeds_client_and_code() {
+    let url = build_auth_url("cid-123", "abcd");
+    assert!(url.starts_with("https://app.plex.tv/auth#?"));
+    assert!(url.contains("clientID=cid-123"));
+    assert!(url.contains("code=abcd"));
+    // product is inside a URL-encoded context[device][product] key
+    assert!(url.contains("product%5D=Discrakt"));
+}
+
+#[test]
+fn test_request_plex_pin() {
+    let mut server = mockito::Server::new();
+    let mock = server
+        .mock("POST", "/api/v2/pins")
+        .match_query(mockito::Matcher::UrlEncoded("strong".into(), "true".into()))
+        .match_header("x-plex-client-identifier", "cid-1")
+        .with_status(201)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"id": 42, "code": "longcode", "expiresIn": 1800, "authToken": null}"#)
+        .create();
+
+    let pin = request_plex_pin("cid-1", Some(&server.url())).expect("pin");
+    mock.assert();
+    assert_eq!(pin.id, 42);
+    assert_eq!(pin.code, "longcode");
+    assert_eq!(pin.expires_in, 1800);
+    assert_eq!(pin.auth_token, None);
+}
+
+#[test]
+fn test_poll_plex_pin_pending_then_authorized() {
+    let mut server = mockito::Server::new();
+
+    let pending = server
+        .mock("GET", "/api/v2/pins/42")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"id": 42, "code": "c", "expiresIn": 1800, "authToken": null}"#)
+        .create();
+    let result = poll_plex_pin("cid-1", 42, Some(&server.url()));
+    pending.assert();
+    assert!(matches!(result, PlexPinPoll::Pending));
+
+    let authorized = server
+        .mock("GET", "/api/v2/pins/42")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"id": 42, "code": "c", "expiresIn": 1800, "authToken": "tok-xyz"}"#)
+        .create();
+    let result = poll_plex_pin("cid-1", 42, Some(&server.url()));
+    authorized.assert();
+    match result {
+        PlexPinPoll::Authorized(token) => assert_eq!(token, "tok-xyz"),
+        other => panic!("expected Authorized, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_poll_plex_pin_expired() {
+    let mut server = mockito::Server::new();
+    server
+        .mock("GET", "/api/v2/pins/99")
+        .with_status(404)
+        .create();
+    let result = poll_plex_pin("cid-1", 99, Some(&server.url()));
+    match result {
+        PlexPinPoll::Error(e) => assert!(e.contains("expired")),
+        other => panic!("expected Error(expired), got {other:?}"),
+    }
+}
+
+#[test]
+fn test_discover_plex_server_prefers_local_direct_over_relay() {
+    let mut server = mockito::Server::new();
+    let body = r#"[
+        {"name":"Client","provides":"client","owned":true,"connections":[]},
+        {"name":"My Server","provides":"server","owned":true,"accessToken":"srvtoken",
+         "connections":[
+            {"protocol":"https","uri":"https://relay.plex.direct:443","local":false,"relay":true},
+            {"protocol":"https","uri":"https://1-2-3-4.hash.plex.direct:32400","local":true,"relay":false}
+         ]}
+    ]"#;
+    let mock = server
+        .mock("GET", "/api/v2/resources")
+        .match_query(mockito::Matcher::Any)
+        .match_header("x-plex-token", "tok")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .create();
+
+    let result = discover_plex_server("tok", "cid", Some(&server.url())).expect("server");
+    mock.assert();
+    assert_eq!(
+        result,
+        PlexServer {
+            uri: "https://1-2-3-4.hash.plex.direct:32400".to_string(),
+            access_token: "srvtoken".to_string(),
+        }
+    );
+}
+
+#[test]
+fn test_discover_plex_server_errors_when_no_servers() {
+    let mut server = mockito::Server::new();
+    server
+        .mock("GET", "/api/v2/resources")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"[{"name":"Phone","provides":"client","connections":[]}]"#)
+        .create();
+
+    assert!(discover_plex_server("tok", "cid", Some(&server.url())).is_err());
+}
+
+#[test]
+fn test_fetch_plex_username() {
+    let mut server = mockito::Server::new();
+    server
+        .mock("GET", "/api/v2/user")
+        .match_header("x-plex-token", "tok")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"username": "alice", "title": "Alice A."}"#)
+        .create();
+
+    assert_eq!(
+        fetch_plex_username("tok", "cid", Some(&server.url())),
+        Some("alice".to_string())
+    );
+}
