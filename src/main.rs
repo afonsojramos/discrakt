@@ -9,6 +9,7 @@ use discrakt::{
     autostart,
     discord::Discord,
     source::{
+        jellyfin::{JellyfinConfig, JellyfinSource},
         plex::{PlexConfig, PlexSource},
         trakt::TraktSource,
         MediaKind, Source,
@@ -380,6 +381,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let plex_server_url = cfg.plex_server_url.clone();
     let plex_token = cfg.plex_token.clone();
     let plex_username = cfg.plex_username.clone();
+    let jellyfin_server_url = cfg.jellyfin_server_url.clone();
+    let jellyfin_access_token = cfg.jellyfin_access_token.clone();
+    let jellyfin_device_id = cfg.jellyfin_device_id.clone();
+    let jellyfin_user_id = cfg.jellyfin_user_id.clone();
+    let jellyfin_username = cfg.jellyfin_username.clone();
     let tmdb_token = cfg.tmdb_token.clone();
     let tmdb_language = cfg.tmdb_language.clone();
 
@@ -395,6 +401,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 server_url: plex_server_url,
                 token: plex_token,
                 username: plex_username,
+                tmdb_token,
+                tmdb_base_url: None,
+                language: None,
+            })),
+            SourceKind::Jellyfin => Box::new(JellyfinSource::new(JellyfinConfig {
+                server_url: jellyfin_server_url,
+                access_token: jellyfin_access_token,
+                device_id: jellyfin_device_id,
+                user_id: jellyfin_user_id,
+                username: jellyfin_username,
                 tmdb_token,
                 tmdb_base_url: None,
                 language: None,

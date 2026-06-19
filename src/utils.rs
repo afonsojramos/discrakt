@@ -171,6 +171,7 @@ pub enum SourceKind {
     #[default]
     Trakt,
     Plex,
+    Jellyfin,
 }
 
 pub struct Env {
@@ -188,6 +189,16 @@ pub struct Env {
     pub plex_token: String,
     /// Plex account username to mirror (Plex source only).
     pub plex_username: String,
+    /// Base URL of the Jellyfin server (Jellyfin source only).
+    pub jellyfin_server_url: String,
+    /// Jellyfin access token (Jellyfin source only).
+    pub jellyfin_access_token: String,
+    /// Jellyfin device id for the auth header (Jellyfin source only).
+    pub jellyfin_device_id: String,
+    /// Jellyfin user id to mirror (Jellyfin source only).
+    pub jellyfin_user_id: String,
+    /// Jellyfin username to mirror when no user id is set.
+    pub jellyfin_username: String,
     pub tmdb_token: String,
     pub tmdb_language: String,
 }
@@ -643,18 +654,36 @@ fn read_plex_config(config: &Ini) -> (String, String, String) {
     )
 }
 
+/// Returns true when the config has a usable Jellyfin source.
+fn jellyfin_configured(config: &Ini) -> bool {
+    config
+        .get("Jellyfin", "serverUrl")
+        .is_some_and(|s| !s.is_empty())
+        && config
+            .get("Jellyfin", "accessToken")
+            .is_some_and(|s| !s.is_empty())
+}
+
 /// Determines the active source, honoring an explicit `[Discrakt] source`
 /// override and otherwise falling back to whichever source is configured.
-fn determine_source(config: &Ini, trakt_configured: bool, plex_configured: bool) -> SourceKind {
+fn determine_source(
+    config: &Ini,
+    trakt_configured: bool,
+    plex_configured: bool,
+    jellyfin_configured: bool,
+) -> SourceKind {
     match config
         .get("Discrakt", "source")
         .map(|s| s.trim().to_lowercase())
         .as_deref()
     {
         Some("plex") => SourceKind::Plex,
+        Some("jellyfin") => SourceKind::Jellyfin,
         Some("trakt") => SourceKind::Trakt,
-        // No explicit choice: prefer Plex only when it is the only one configured.
-        _ if plex_configured && !trakt_configured => SourceKind::Plex,
+        // No explicit choice: prefer Trakt, then Plex, then Jellyfin.
+        _ if trakt_configured => SourceKind::Trakt,
+        _ if plex_configured => SourceKind::Plex,
+        _ if jellyfin_configured => SourceKind::Jellyfin,
         _ => SourceKind::Trakt,
     }
 }
@@ -691,8 +720,9 @@ pub fn load_config() -> Result<Env, String> {
         Default::default()
     };
     let plex_configured = !server_url.is_empty() && !token.is_empty();
+    let has_jellyfin = loaded && jellyfin_configured(&config);
 
-    if !trakt_configured && !plex_configured {
+    if !trakt_configured && !plex_configured && !has_jellyfin {
         tracing::info!("Credentials missing or incomplete, starting browser setup");
 
         // Run browser-based setup, then re-read the config it wrote.
@@ -726,6 +756,7 @@ pub fn load_config() -> Result<Env, String> {
         &config,
         !trakt_username.is_empty() || trakt_has_oauth,
         !plex_server_url.is_empty() && !plex_token.is_empty(),
+        jellyfin_configured(&config),
     );
 
     Ok(Env {
@@ -744,6 +775,11 @@ pub fn load_config() -> Result<Env, String> {
         plex_server_url,
         plex_token,
         plex_username,
+        jellyfin_server_url: config.get("Jellyfin", "serverUrl").unwrap_or_default(),
+        jellyfin_access_token: config.get("Jellyfin", "accessToken").unwrap_or_default(),
+        jellyfin_device_id: config.get("Jellyfin", "deviceId").unwrap_or_default(),
+        jellyfin_user_id: config.get("Jellyfin", "userId").unwrap_or_default(),
+        jellyfin_username: config.get("Jellyfin", "username").unwrap_or_default(),
         tmdb_token: DEFAULT_TMDB_TOKEN.to_string(),
         tmdb_language,
     })
@@ -921,23 +957,50 @@ mod tests {
     #[test]
     fn determine_source_defaults_to_trakt() {
         let config = parse("[Trakt API]\ntraktUser=alice\n");
-        assert_eq!(determine_source(&config, true, false), SourceKind::Trakt);
+        assert_eq!(
+            determine_source(&config, true, false, false),
+            SourceKind::Trakt
+        );
     }
 
     #[test]
     fn determine_source_uses_plex_when_only_plex_configured() {
         let config = parse("[Plex]\nserverUrl=http://host:32400\ntoken=abc\n");
-        assert_eq!(determine_source(&config, false, true), SourceKind::Plex);
+        assert_eq!(
+            determine_source(&config, false, true, false),
+            SourceKind::Plex
+        );
+    }
+
+    #[test]
+    fn determine_source_uses_jellyfin_when_only_jellyfin_configured() {
+        let config = parse("[Jellyfin]\nserverUrl=http://host:8096\naccessToken=abc\n");
+        assert_eq!(
+            determine_source(&config, false, false, true),
+            SourceKind::Jellyfin
+        );
     }
 
     #[test]
     fn determine_source_honors_explicit_override() {
         let config = parse("[Discrakt]\nsource=plex\n[Trakt API]\ntraktUser=alice\n");
         // Both configured, but the explicit override wins.
-        assert_eq!(determine_source(&config, true, true), SourceKind::Plex);
+        assert_eq!(
+            determine_source(&config, true, true, false),
+            SourceKind::Plex
+        );
+
+        let config = parse("[Discrakt]\nsource=jellyfin\n[Trakt API]\ntraktUser=alice\n");
+        assert_eq!(
+            determine_source(&config, true, false, true),
+            SourceKind::Jellyfin
+        );
 
         let config = parse("[Discrakt]\nsource=trakt\n[Plex]\nserverUrl=http://h\ntoken=t\n");
-        assert_eq!(determine_source(&config, false, true), SourceKind::Trakt);
+        assert_eq!(
+            determine_source(&config, false, true, false),
+            SourceKind::Trakt
+        );
     }
 
     #[test]

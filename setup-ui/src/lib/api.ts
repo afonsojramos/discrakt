@@ -53,6 +53,23 @@ export function startPlexLogin(): Promise<PlexLoginResponse> {
   return postJson<PlexLoginResponse>("/plex-login/start", {});
 }
 
+export type JellyfinLoginResponse = {
+  code: string;
+  interval: number;
+};
+
+export function startJellyfinLogin(serverUrl: string): Promise<JellyfinLoginResponse> {
+  return postJson<JellyfinLoginResponse>("/jellyfin-login/start", { serverUrl });
+}
+
+export function submitJellyfin(input: {
+  serverUrl: string;
+  apiKey: string;
+  username: string;
+}): Promise<unknown> {
+  return postJson("/submit-jellyfin", input);
+}
+
 export async function getStatus(): Promise<SetupStatus> {
   const response = await fetch("/status");
   return (await response.json()) as SetupStatus;

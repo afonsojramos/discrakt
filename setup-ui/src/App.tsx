@@ -7,21 +7,31 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getStatus, startPlexLogin, submitPlex, submitTrakt, submitTraktPublic } from "@/lib/api";
+import {
+  getStatus,
+  startJellyfinLogin,
+  startPlexLogin,
+  submitJellyfin,
+  submitPlex,
+  submitTrakt,
+  submitTraktPublic,
+} from "@/lib/api";
 
 type AuthInfo = {
   /** The URL the user opens to authorize. */
   link: string;
-  /** A short code to display (Trakt only); omitted for Plex. */
+  /** A short code to display (Trakt device code, Jellyfin Quick Connect). */
   code?: string;
   buttonLabel: string;
+  /** Optional override for the instruction text above the code/button. */
+  hint?: string;
   expiresInMinutes: number;
   intervalSeconds: number;
 };
 
-type Screen = { name: "setup" } | { name: "auth"; info: AuthInfo } | { name: "success" };
+const TAGLINE = "Trakt / Plex / Jellyfin to Discord Rich Presence";
 
-const TAGLINE = "Trakt/Plex to Discord Rich Presence";
+type Screen = { name: "setup" } | { name: "auth"; info: AuthInfo } | { name: "success" };
 
 export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "setup" });
@@ -95,6 +105,7 @@ function SetupScreen({ error, setError, onAuth, onDone }: SetupProps) {
       <TabsList className="w-full">
         <TabsTrigger value="trakt">Trakt</TabsTrigger>
         <TabsTrigger value="plex">Plex</TabsTrigger>
+        <TabsTrigger value="jellyfin">Jellyfin</TabsTrigger>
       </TabsList>
 
       {error && <ErrorBox message={error} />}
@@ -104,6 +115,9 @@ function SetupScreen({ error, setError, onAuth, onDone }: SetupProps) {
       </TabsContent>
       <TabsContent value="plex">
         <PlexPane setError={setError} onAuth={onAuth} onDone={onDone} />
+      </TabsContent>
+      <TabsContent value="jellyfin">
+        <JellyfinPane setError={setError} onAuth={onAuth} onDone={onDone} />
       </TabsContent>
     </Tabs>
   );
@@ -297,11 +311,114 @@ function PlexPane({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
   );
 }
 
+function JellyfinPane({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
+  const [busy, setBusy] = useState(false);
+  const [serverUrl, setServerUrl] = useState("");
+  const [manual, setManual] = useState({ serverUrl: "", apiKey: "", username: "" });
+
+  async function handleLogin() {
+    if (!serverUrl.trim()) {
+      setError("Please enter your Jellyfin server URL.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await startJellyfinLogin(serverUrl.trim());
+      onAuth({
+        code: data.code,
+        link: `${serverUrl.trim().replace(/\/$/, "")}/web/`,
+        buttonLabel: "Open Jellyfin",
+        hint: "In Jellyfin, open Quick Connect (user menu → Quick Connect) and enter this code:",
+        expiresInMinutes: 5,
+        intervalSeconds: data.interval ?? 2,
+      });
+    } catch (err) {
+      setError(messageOf(err));
+      setBusy(false);
+    }
+  }
+
+  async function handleManual(event: FormEvent) {
+    event.preventDefault();
+    if (!manual.serverUrl.trim() || !manual.apiKey.trim()) {
+      setError("Please fill in the server URL and API key.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await submitJellyfin(manual);
+      onDone();
+    } catch (err) {
+      setError(messageOf(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Connect to your Jellyfin server with Quick Connect and mirror your active session.
+      </p>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="jellyfinServer">Jellyfin server URL</Label>
+        <Input
+          id="jellyfinServer"
+          placeholder="http://192.168.1.10:8096"
+          value={serverUrl}
+          onChange={(e) => setServerUrl(e.target.value)}
+        />
+      </div>
+      <Button onClick={handleLogin} disabled={busy}>
+        {busy && <Loader2 className="animate-spin" />}
+        Login with Jellyfin
+      </Button>
+
+      <Advanced label="Use an API key instead">
+        <form onSubmit={handleManual} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="jfServerUrl">Jellyfin server URL</Label>
+            <Input
+              id="jfServerUrl"
+              placeholder="http://192.168.1.10:8096"
+              value={manual.serverUrl}
+              onChange={(e) => setManual({ ...manual, serverUrl: e.target.value })}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="jfApiKey">API key</Label>
+            <Input
+              id="jfApiKey"
+              placeholder="Jellyfin API key"
+              value={manual.apiKey}
+              onChange={(e) => setManual({ ...manual, apiKey: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">Dashboard → API Keys</p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="jfUsername">Jellyfin username</Label>
+            <Input
+              id="jfUsername"
+              placeholder="Your Jellyfin username"
+              value={manual.username}
+              onChange={(e) => setManual({ ...manual, username: e.target.value })}
+            />
+          </div>
+          <Button type="submit" variant="secondary" disabled={busy}>
+            Connect Jellyfin
+          </Button>
+        </form>
+      </Advanced>
+    </div>
+  );
+}
+
 function AuthScreen({ info, error }: { info: AuthInfo; error: string | null }) {
   return (
     <div className="flex flex-col items-center gap-5 text-center">
       <p className="text-sm text-muted-foreground">
-        Click below to authorize Discrakt in your browser.
+        {info.hint ?? "Click below to authorize Discrakt in your browser."}
       </p>
 
       {info.code && (

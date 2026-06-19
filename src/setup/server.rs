@@ -13,6 +13,9 @@ use tiny_http::{Response, Server, StatusCode};
 
 use include_dir::{include_dir, Dir};
 
+use crate::jellyfin_auth::{
+    self, authenticate_with_quick_connect, poll_quick_connect, QuickConnectPoll, QuickConnectState,
+};
 use crate::plex_auth::{
     self, discover_plex_server, fetch_plex_username, poll_plex_pin, PlexPin, PlexPinPoll,
 };
@@ -82,6 +85,24 @@ struct PlexSubmitted {
     token: String,
     #[serde(default)]
     username: String,
+}
+
+/// Jellyfin manual (API key) configuration submitted via the setup form.
+#[derive(Debug, Deserialize)]
+struct JellyfinSubmitted {
+    #[serde(rename = "serverUrl")]
+    server_url: String,
+    #[serde(rename = "apiKey", default)]
+    api_key: String,
+    #[serde(default)]
+    username: String,
+}
+
+/// Body of the Jellyfin Quick Connect start request.
+#[derive(Debug, Deserialize)]
+struct JellyfinLoginStart {
+    #[serde(rename = "serverUrl")]
+    server_url: String,
 }
 
 /// State of the OAuth authorization flow.
@@ -215,6 +236,45 @@ fn write_public_credentials(username: &str) -> Result<PathBuf, String> {
     set_restrictive_permissions(&config_path);
 
     tracing::info!("Public Trakt profile saved to {:?}", config_path);
+    Ok(config_path)
+}
+
+/// Writes a Jellyfin configuration to the config file and marks it as the source.
+fn write_jellyfin_credentials(
+    server_url: &str,
+    access_token: &str,
+    device_id: &str,
+    user_id: &str,
+    username: &str,
+) -> Result<PathBuf, String> {
+    let config_dir = config_dir_path()?;
+
+    if !config_dir.exists() {
+        std::fs::create_dir_all(&config_dir)
+            .map_err(|e| format!("Failed to create config directory: {e}"))?;
+    }
+
+    let config_path = config_dir.join("credentials.ini");
+
+    let mut config = Ini::new_cs();
+    if config_path.exists() {
+        let _ = config.load(&config_path);
+    }
+
+    config.setstr("Discrakt", "source", Some("jellyfin"));
+    config.setstr("Jellyfin", "serverUrl", Some(server_url.trim()));
+    config.setstr("Jellyfin", "accessToken", Some(access_token.trim()));
+    config.setstr("Jellyfin", "deviceId", Some(device_id));
+    config.setstr("Jellyfin", "userId", Some(user_id.trim()));
+    config.setstr("Jellyfin", "username", Some(username.trim()));
+
+    config
+        .write(&config_path)
+        .map_err(|e| format!("Failed to write config file: {e}"))?;
+
+    set_restrictive_permissions(&config_path);
+
+    tracing::info!("Jellyfin configuration saved to {:?}", config_path);
     Ok(config_path)
 }
 
@@ -657,6 +717,147 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 let _ = request.respond(response);
             }
 
+            ("POST", "/submit-jellyfin") => {
+                let body = match read_json_body(&mut request) {
+                    Ok(b) => b,
+                    Err((code, msg)) => {
+                        let response = Response::from_string(msg).with_status_code(code);
+                        let _ = request.respond(response);
+                        continue;
+                    }
+                };
+
+                let creds: JellyfinSubmitted = match serde_json::from_str(&body) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::error!("Failed to parse Jellyfin JSON: {}", e);
+                        let response = Response::from_string(format!("Invalid JSON: {e}"))
+                            .with_status_code(StatusCode(400));
+                        let _ = request.respond(response);
+                        continue;
+                    }
+                };
+
+                if creds.server_url.trim().is_empty() || creds.api_key.trim().is_empty() {
+                    let response = Response::from_string("Server URL and API key are required")
+                        .with_status_code(StatusCode(400));
+                    let _ = request.respond(response);
+                    continue;
+                }
+
+                let device_id = jellyfin_auth::generate_device_id();
+                if let Err(e) = write_jellyfin_credentials(
+                    &creds.server_url,
+                    &creds.api_key,
+                    &device_id,
+                    "",
+                    &creds.username,
+                ) {
+                    tracing::error!("Failed to write Jellyfin credentials: {}", e);
+                    let response = Response::from_string(format!("Failed to save: {e}"))
+                        .with_status_code(StatusCode(500));
+                    let _ = request.respond(response);
+                    continue;
+                }
+
+                if let Ok(mut result_guard) = result.lock() {
+                    *result_guard = Some(SetupResult {
+                        trakt_username: String::new(),
+                        trakt_client_id: String::new(),
+                    });
+                }
+                if let Ok(mut state) = oauth_state.lock() {
+                    *state = OAuthState::Success(Instant::now());
+                }
+                setup_complete.store(true, Ordering::SeqCst);
+
+                let response = Response::from_string(r#"{"status":"success"}"#).with_header(
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                        .unwrap(),
+                );
+                let _ = request.respond(response);
+            }
+
+            ("POST", "/jellyfin-login/start") => {
+                let body = match read_json_body(&mut request) {
+                    Ok(b) => b,
+                    Err((code, msg)) => {
+                        let response = Response::from_string(msg).with_status_code(code);
+                        let _ = request.respond(response);
+                        continue;
+                    }
+                };
+                let start: JellyfinLoginStart = match serde_json::from_str(&body) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let response = Response::from_string(format!("Invalid JSON: {e}"))
+                            .with_status_code(StatusCode(400));
+                        let _ = request.respond(response);
+                        continue;
+                    }
+                };
+                let server_url = start.server_url.trim().to_string();
+                if server_url.is_empty() {
+                    let response = Response::from_string("Server URL is required")
+                        .with_status_code(StatusCode(400));
+                    let _ = request.respond(response);
+                    continue;
+                }
+
+                let device_id = jellyfin_auth::generate_device_id();
+                match jellyfin_auth::initiate_quick_connect(&server_url, &device_id) {
+                    Ok(state) => {
+                        if let Ok(mut s) = oauth_state.lock() {
+                            *s = OAuthState::Pending;
+                        }
+
+                        if polling_started
+                            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                            .is_ok()
+                        {
+                            let oauth_state_clone = Arc::clone(&oauth_state);
+                            let setup_complete_clone = Arc::clone(&setup_complete);
+                            let result_clone = Arc::clone(&result);
+                            let state_clone = state.clone();
+                            let server = server_url.clone();
+                            let device = device_id.clone();
+                            thread::spawn(move || {
+                                poll_jellyfin_in_background(
+                                    server,
+                                    device,
+                                    state_clone,
+                                    oauth_state_clone,
+                                    setup_complete_clone,
+                                    result_clone,
+                                );
+                            });
+                        } else {
+                            tracing::warn!("Login already in progress, ignoring duplicate start");
+                        }
+
+                        let response_json = serde_json::json!({
+                            "code": state.code,
+                            "interval": 2,
+                        })
+                        .to_string();
+                        let response = Response::from_string(response_json).with_header(
+                            tiny_http::Header::from_bytes(
+                                &b"Content-Type"[..],
+                                &b"application/json"[..],
+                            )
+                            .unwrap(),
+                        );
+                        let _ = request.respond(response);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to start Jellyfin Quick Connect: {}", e);
+                        let response = Response::from_string(format!("Quick Connect failed: {e}"))
+                            .with_status_code(StatusCode(500));
+                        let _ = request.respond(response);
+                    }
+                }
+            }
+
             ("POST", "/plex-login/start") => {
                 // Begin the "Login with Plex" PIN flow: request a PIN, then poll
                 // for authorization in the background (reusing the OAuth state
@@ -794,6 +995,76 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
         .ok()
         .and_then(|guard| guard.clone())
         .ok_or_else(|| "Setup was cancelled or failed".into())
+}
+
+/// Poll for Jellyfin Quick Connect approval in the background, then exchange the
+/// secret for an access token, write the config, and signal completion.
+#[allow(clippy::needless_pass_by_value)]
+fn poll_jellyfin_in_background(
+    server_url: String,
+    device_id: String,
+    state: QuickConnectState,
+    oauth_state: Arc<Mutex<OAuthState>>,
+    setup_complete: Arc<AtomicBool>,
+    result: Arc<Mutex<Option<SetupResult>>>,
+) {
+    let deadline = Instant::now() + Duration::from_secs(300);
+    let set_state = |s: OAuthState| {
+        if let Ok(mut guard) = oauth_state.lock() {
+            *guard = s;
+        }
+    };
+
+    while Instant::now() < deadline {
+        thread::sleep(Duration::from_secs(2));
+
+        match poll_quick_connect(&server_url, &state.secret) {
+            QuickConnectPoll::Authorized => {
+                let auth =
+                    match authenticate_with_quick_connect(&server_url, &device_id, &state.secret) {
+                        Ok(auth) => auth,
+                        Err(e) => {
+                            tracing::error!("Jellyfin authentication failed: {}", e);
+                            set_state(OAuthState::Error(format!("Authentication failed: {e}")));
+                            return;
+                        }
+                    };
+
+                if let Err(e) = write_jellyfin_credentials(
+                    &server_url,
+                    &auth.access_token,
+                    &device_id,
+                    &auth.user_id,
+                    &auth.username,
+                ) {
+                    tracing::error!("Failed to write Jellyfin credentials: {}", e);
+                    set_state(OAuthState::Error(format!("Failed to save: {e}")));
+                    return;
+                }
+
+                if let Ok(mut guard) = result.lock() {
+                    *guard = Some(SetupResult {
+                        trakt_username: String::new(),
+                        trakt_client_id: String::new(),
+                    });
+                }
+                set_state(OAuthState::Success(Instant::now()));
+                setup_complete.store(true, Ordering::SeqCst);
+                tracing::info!("Jellyfin Quick Connect complete");
+                return;
+            }
+            QuickConnectPoll::Pending => {}
+            QuickConnectPoll::Error(e) if e.contains("expired") => {
+                set_state(OAuthState::Expired);
+                return;
+            }
+            QuickConnectPoll::Error(e) => {
+                tracing::debug!("Jellyfin Quick Connect poll error (will retry): {}", e);
+            }
+        }
+    }
+
+    set_state(OAuthState::Expired);
 }
 
 /// Poll for "Login with Plex" authorization in the background.
