@@ -327,9 +327,9 @@ function JellyfinPane({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
       const data = await startJellyfinLogin(serverUrl.trim());
       onAuth({
         code: data.code,
-        link: `${serverUrl.trim().replace(/\/$/, "")}/web/`,
-        buttonLabel: "Open Jellyfin",
-        hint: "In Jellyfin, open Quick Connect (user menu → Quick Connect) and enter this code:",
+        link: `${serverUrl.trim().replace(/\/$/, "")}/web/#/quickconnect`,
+        buttonLabel: "Open Jellyfin Quick Connect",
+        hint: "Open Quick Connect in Jellyfin and enter this code:",
         expiresInMinutes: 5,
         intervalSeconds: data.interval ?? 2,
       });
