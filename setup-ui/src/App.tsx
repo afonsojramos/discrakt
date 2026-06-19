@@ -40,9 +40,11 @@ export function App() {
   // While waiting for authorization, poll the server for completion.
   useEffect(() => {
     if (screen.name !== "auth") return;
-    const id = setInterval(async () => {
+    let cancelled = false;
+    const check = async () => {
       try {
         const status = await getStatus();
+        if (cancelled) return;
         if (status.status === "success") setScreen({ name: "success" });
         else if (status.status === "denied")
           setError("Authorization was denied. Restart Discrakt to try again.");
@@ -52,8 +54,20 @@ export function App() {
       } catch {
         // transient network error; keep polling
       }
-    }, screen.info.intervalSeconds * 1000);
-    return () => clearInterval(id);
+    };
+    const id = setInterval(check, screen.info.intervalSeconds * 1000);
+    // Browsers throttle background-tab timers, so the user authorizing in another
+    // tab wouldn't see completion until they return. Re-check the moment this tab
+    // regains focus to catch up immediately.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [screen]);
 
   return (
