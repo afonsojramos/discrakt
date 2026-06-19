@@ -91,7 +91,7 @@ impl ksni::Tray for DiscraktTray {
             .state
             .read()
             .map(|s| format!("Discrakt: {}", s.status_text))
-            .unwrap_or_else(|_| "Discrakt - Trakt/Plex to Discord".into());
+            .unwrap_or_else(|_| "Discrakt - Trakt/Plex/Jellyfin to Discord".into());
 
         ksni::ToolTip {
             icon_name: String::new(),

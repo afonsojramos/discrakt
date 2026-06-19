@@ -27,11 +27,11 @@ Popular apps with Trakt integration include:
 
 Once your app is scrobbling to Trakt, Discrakt will display your watch status on Discord, **wherever you are watching** (TV, phone, across the world), **in whatever app**, as long as you have a single device running **Discord** and **Discrakt**.
 
-**Plex (direct)**: Alternatively, Discrakt can connect straight to your Plex Media Server and mirror your active session, with no Trakt account or external scrobbling needed. You provide your server URL and a Plex token during setup, and Discrakt polls the server for what you are currently playing. Movie and show artwork plus localized titles are still fetched from TMDB whenever Plex exposes a TMDB id.
+**Plex / Jellyfin (direct)**: Alternatively, Discrakt can connect straight to your **Plex** or **Jellyfin** server and mirror your active session, with no Trakt account or external scrobbling needed. You log in during setup (Plex login, or Jellyfin Quick Connect), and Discrakt polls the server for what you are currently playing. Movie and show artwork plus localized titles are still fetched from TMDB.
 
 ## Features
 
-- Choose your source: **Trakt** (any app that scrobbles to it) or a **direct Plex Media Server** connection
+- Choose your source: **Trakt** (any app that scrobbles to it), or a direct **Plex** or **Jellyfin** server connection
 - 🌐 **Multilingual support** (Automatic system detection & Tray menu selection)
   - _Localized titles for movies and episodes are fetched via TMDB._
 - Separate Discord Rich Presence apps for Movies and TV Shows
@@ -52,8 +52,9 @@ Plex Rich Presence alternatives:
 1. Run the executable
 2. A setup wizard opens in your browser
 3. Pick your source:
-   - **Trakt**: enter your **Trakt username**. That's it. A default Trakt Client ID is provided, so you don't need to create your own API application.
-   - **Plex**: enter your **Plex Media Server URL** and a **[Plex token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)**. On a server with multiple users, add your Plex username so Discrakt mirrors the right session.
+   - **Trakt**: click **Login with Trakt** and approve in your browser. (Advanced: use a public Trakt profile by username, no login.)
+   - **Plex**: click **Login with Plex** and approve. (Advanced: enter a server URL + token manually.)
+   - **Jellyfin**: enter your server URL and click **Login with Jellyfin**, then enter the shown code in Jellyfin's **Quick Connect**. (Advanced: use an API key.)
 
 _Note: Discord needs to be running on the same machine as Discrakt._
 
@@ -84,7 +85,21 @@ token = your-x-plex-token
 username = your-plex-username
 ```
 
-`username` is optional and only needed to disambiguate which user's session to mirror on a shared server. When `source` is omitted, Discrakt uses Trakt if a Trakt username is present, otherwise Plex.
+`username` is optional and only needed to disambiguate which user's session to mirror on a shared server.
+
+**Using Jellyfin**: add a `[Jellyfin]` section and select it with `[Discrakt] source = jellyfin`:
+
+```ini
+[Discrakt]
+source = jellyfin
+
+[Jellyfin]
+serverUrl = http://192.168.1.10:8096
+accessToken = your-jellyfin-api-key
+username = your-jellyfin-username
+```
+
+`accessToken` can be an API key (Dashboard → API Keys) or a token from Quick Connect. When `source` is omitted, Discrakt prefers Trakt, then Plex, then Jellyfin, based on what's configured.
 
 </details>
 
