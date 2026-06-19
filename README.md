@@ -9,7 +9,7 @@
   <a href="https://github.com/afonsojramos/discrakt/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
-A simple app that acts as a bridge between [Discord](https://discord.com/) and [Trakt](https://trakt.tv) (and maybe even [Plex](https://www.plex.tv/)), allowing for the display of the watch status as [Discord's Rich Presence](https://discord.com/rich-presence). Essentially, it's a Trakt/Plex Discord Rich Presence.
+A simple app that acts as a bridge between [Discord](https://discord.com/) and [Trakt](https://trakt.tv) or [Plex](https://www.plex.tv/), allowing for the display of the watch status as [Discord's Rich Presence](https://discord.com/rich-presence). Essentially, it's a Trakt/Plex Discord Rich Presence.
 
 <p align="center"><img src="./docs/demo/member-list.png" width="260px"><p>
 
@@ -40,7 +40,7 @@ Once your app is scrobbling to Trakt, Discrakt will display your watch status on
 - Progress bar showing watch percentage
 - System tray integration with pause/resume functionality
 - Start at login option
-- Browser-based setup wizard with OAuth device flow
+- Browser-based setup wizard (Trakt OAuth device flow, or a direct Plex connection)
 
 Plex Rich Presence alternatives:
 
