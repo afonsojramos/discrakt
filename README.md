@@ -181,6 +181,17 @@ Options:
 Make sure you've installed Rust. You can install Rust and its package manager, `cargo` by following the instructions on [rustup.rs](https://rustup.rs/).
 After installing the requirements below, simply run `cargo run`.
 
+The setup wizard is a React app in [`setup-ui/`](./setup-ui) built with the [Vite+ (`vite-plus`)](https://viteplus.dev) unified toolchain (Rolldown build, oxlint, oxfmt), embedded into the binary at build time. `cargo build` runs the frontend build automatically via `build.rs`, so you also need **Node and pnpm** installed (managed by [mise](https://mise.jdx.dev): `mise install`). To iterate on the wizard UI directly, run the app once to start its local setup server, then point the dev server at it:
+
+```bash
+cd setup-ui
+VITE_PROXY_TARGET=http://127.0.0.1:<setup-server-port> pnpm dev   # vp dev
+pnpm lint     # oxlint via vp
+pnpm format   # oxfmt via vp
+```
+
+To build the Rust binary against a prebuilt `setup-ui/dist` without invoking pnpm, set `DISCRAKT_SKIP_UI_BUILD=1`.
+
 ## Thank You
 
 `movie` and `tv` icons by [iconixar](https://www.flaticon.com/authors/iconixar)

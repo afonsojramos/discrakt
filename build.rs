@@ -1,6 +1,10 @@
 fn main() {
+    // Build the setup wizard frontend (setup-ui/) so its dist/ can be embedded.
+    build_setup_ui();
+
     // Propagate DISCRAKT_VERSION to the main build via cargo:rustc-env
     // This allows the binary to access the version at compile time via env!("DISCRAKT_VERSION")
+    println!("cargo:rerun-if-env-changed=DISCRAKT_VERSION");
     if let Ok(version) = std::env::var("DISCRAKT_VERSION") {
         println!("cargo:rustc-env=DISCRAKT_VERSION={}", version);
     }
@@ -84,5 +88,53 @@ fn main() {
 
         res.compile()
             .expect("Failed to compile Windows resources. Ensure assets/Discrakt.ico exists");
+    }
+}
+
+/// Builds the embedded setup-ui frontend (vite-plus) into setup-ui/dist.
+///
+/// Set `DISCRAKT_SKIP_UI_BUILD=1` to skip this and reuse an existing dist/
+/// (e.g. in environments without Node/pnpm that ship a prebuilt bundle).
+fn build_setup_ui() {
+    // Rebuild only when the frontend sources change.
+    for path in [
+        "setup-ui/src",
+        "setup-ui/index.html",
+        "setup-ui/package.json",
+        "setup-ui/pnpm-lock.yaml",
+        "setup-ui/vite.config.ts",
+        "setup-ui/components.json",
+    ] {
+        println!("cargo:rerun-if-changed={path}");
+    }
+    println!("cargo:rerun-if-env-changed=DISCRAKT_SKIP_UI_BUILD");
+
+    if std::env::var_os("DISCRAKT_SKIP_UI_BUILD").is_some() {
+        println!("cargo:warning=Skipping setup-ui build; reusing existing setup-ui/dist");
+        return;
+    }
+
+    let ui_dir = std::path::Path::new("setup-ui");
+
+    // Install dependencies only when they are missing (keeps incremental builds fast).
+    if !ui_dir.join("node_modules").exists() {
+        run_in("pnpm", &["install", "--frozen-lockfile"], ui_dir);
+    }
+    run_in("pnpm", &["run", "build"], ui_dir);
+}
+
+fn run_in(program: &str, args: &[&str], dir: &std::path::Path) {
+    let status = std::process::Command::new(program)
+        .args(args)
+        .current_dir(dir)
+        .status();
+
+    match status {
+        Ok(s) if s.success() => {}
+        Ok(s) => panic!("`{program} {}` failed with {s}", args.join(" ")),
+        Err(e) => panic!(
+            "failed to run `{program}`: {e}. Install Node + pnpm, or set \
+             DISCRAKT_SKIP_UI_BUILD=1 to reuse a prebuilt setup-ui/dist."
+        ),
     }
 }

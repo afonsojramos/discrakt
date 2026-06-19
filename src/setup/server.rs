@@ -11,7 +11,8 @@ use configparser::ini::Ini;
 use serde::{Deserialize, Serialize};
 use tiny_http::{Response, Server, StatusCode};
 
-use super::html;
+use include_dir::{include_dir, Dir};
+
 use crate::plex_auth::{
     self, discover_plex_server, fetch_plex_username, poll_plex_pin, PlexPin, PlexPinPoll,
 };
@@ -25,6 +26,33 @@ const MAX_NETWORK_ERRORS: u32 = 10;
 
 /// Maximum request body size (64KB limit).
 const MAX_BODY_SIZE: usize = 64 * 1024;
+
+/// The built setup wizard frontend, embedded at compile time. Produced by
+/// `build.rs` (the `vite-plus` toolchain) from `setup-ui/`.
+static SETUP_UI: Dir = include_dir!("$CARGO_MANIFEST_DIR/setup-ui/dist");
+
+/// Guesses a content type from a file extension for serving embedded assets.
+fn content_type_for(path: &str) -> &'static str {
+    match path.rsplit('.').next() {
+        Some("html") => "text/html; charset=utf-8",
+        Some("js") => "text/javascript; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("svg") => "image/svg+xml",
+        Some("woff2") => "font/woff2",
+        Some("woff") => "font/woff",
+        Some("json") => "application/json",
+        Some("png") => "image/png",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Builds a response serving an embedded setup-ui file, if it exists.
+fn serve_embedded(path: &str) -> Option<Response<std::io::Cursor<Vec<u8>>>> {
+    let file = SETUP_UI.get_file(path)?;
+    let header =
+        tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type_for(path)).unwrap();
+    Some(Response::from_data(file.contents().to_vec()).with_header(header))
+}
 
 /// Result of the setup process.
 #[derive(Debug, Clone)]
@@ -342,14 +370,10 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 
         match (method.as_str(), url.as_str()) {
             ("GET", "/" | "/index.html") => {
-                let html = html::setup_page();
-                let response = Response::from_string(html).with_header(
-                    tiny_http::Header::from_bytes(
-                        &b"Content-Type"[..],
-                        &b"text/html; charset=utf-8"[..],
-                    )
-                    .unwrap(),
-                );
+                let response = serve_embedded("index.html").unwrap_or_else(|| {
+                    Response::from_data(b"Setup UI not built".to_vec())
+                        .with_status_code(StatusCode(500))
+                });
                 let _ = request.respond(response);
             }
 
@@ -662,6 +686,14 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 let _ = request.respond(response);
             }
 
+            // Serve embedded static assets (JS/CSS/fonts) for any other GET.
+            ("GET", path) => {
+                let response = serve_embedded(path.trim_start_matches('/')).unwrap_or_else(|| {
+                    Response::from_data(b"Not Found".to_vec()).with_status_code(StatusCode(404))
+                });
+                let _ = request.respond(response);
+            }
+
             _ => {
                 let response = Response::from_string("Not Found").with_status_code(StatusCode(404));
                 let _ = request.respond(response);
@@ -912,14 +944,15 @@ mod tests {
     }
 
     #[test]
-    fn test_setup_page_includes_both_sources() {
-        let page = html::setup_page();
-        assert!(page.contains("id=\"plexForm\""));
-        assert!(page.contains("action=\"/submit-plex\""));
-        assert!(page.contains("id=\"setupForm\""));
-        assert!(page.contains("id=\"tab-plex\""));
-        assert!(page.contains("id=\"plexLoginBtn\""));
-        assert!(page.contains("/plex-login/start"));
+    fn test_embedded_setup_ui_is_present() {
+        // The Vite/Rolldown build output must be embedded by build.rs.
+        let index = SETUP_UI
+            .get_file("index.html")
+            .expect("setup-ui/dist/index.html must be embedded");
+        let html = index.contents_utf8().unwrap_or_default();
+        assert!(html.contains("<div id=\"root\">"));
+        assert!(html.contains("assets/")); // references the bundled JS/CSS
+        assert!(serve_embedded("index.html").is_some());
     }
 
     #[test]
