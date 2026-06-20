@@ -122,7 +122,7 @@ impl Tmdb {
         media_type: MediaType,
         tmdb_id: String,
         tmdb_token: &str,
-        season_id: u8,
+        season_id: u16,
     ) -> Option<String> {
         // Posters are season-specific for shows, so the cache key must include
         // the season to avoid returning season 1's art for every later season.
@@ -249,8 +249,8 @@ impl Tmdb {
         media_type: MediaType,
         tmdb_id: String,
         tmdb_token: &str,
-        season: Option<u8>,
-        episode: Option<u8>,
+        season: Option<u16>,
+        episode: Option<u16>,
     ) -> String {
         // Include language in cache key to ensure correct translations when language changes
         let cache_key = if let (Some(s), Some(e)) = (season, episode) {

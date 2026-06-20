@@ -46,8 +46,8 @@ pub struct TraktShow {
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct TraktEpisode {
-    pub season: u8,
-    pub number: u8,
+    pub season: u16,
+    pub number: u16,
     pub title: String,
     pub ids: TraktIds,
     pub runtime: Option<u16>,
@@ -275,7 +275,7 @@ impl Trakt {
         media_type: MediaType,
         tmdb_id: String,
         tmdb_token: String,
-        season_id: u8,
+        season_id: u16,
     ) -> Option<String> {
         self.tmdb
             .get_poster(media_type, tmdb_id, &tmdb_token, season_id)
@@ -379,8 +379,8 @@ impl Trakt {
         media_type: MediaType,
         tmdb_id: String,
         tmdb_token: &str,
-        season: Option<u8>,
-        episode: Option<u8>,
+        season: Option<u16>,
+        episode: Option<u16>,
     ) -> String {
         self.tmdb
             .get_title(media_type, tmdb_id, tmdb_token, season, episode)

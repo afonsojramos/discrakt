@@ -31,8 +31,8 @@ pub struct Watching {
     /// Movie or show title, already localized when a translation was available.
     pub title: String,
     pub year: Option<u16>,
-    pub season: Option<u8>,
-    pub episode_number: Option<u8>,
+    pub season: Option<u16>,
+    pub episode_number: Option<u16>,
     /// Episode title, already localized when available (episodes only).
     pub episode_title: Option<String>,
     pub ids: MediaIds,

@@ -46,8 +46,8 @@ struct PlexMetadata {
     #[serde(rename = "grandparentTitle")]
     grandparent_title: Option<String>,
     #[serde(rename = "parentIndex")]
-    parent_index: Option<u8>,
-    index: Option<u8>,
+    parent_index: Option<u16>,
+    index: Option<u16>,
     year: Option<u16>,
     /// The item's own library key, used to resolve external ids when the session
     /// payload omits them (which it normally does).
