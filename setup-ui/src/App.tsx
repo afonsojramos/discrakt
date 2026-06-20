@@ -488,11 +488,11 @@ function SuccessScreen() {
   }, []);
 
   useEffect(() => {
-    if (!visible) return;
     if (seconds <= 0) {
       window.close();
       return;
     }
+    if (!visible) return;
     const id = setTimeout(() => setSeconds((s) => s - 1), 1000);
     return () => clearTimeout(id);
   }, [seconds, visible]);
