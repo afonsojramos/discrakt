@@ -1054,7 +1054,7 @@ fn poll_jellyfin_in_background(
                 return;
             }
             QuickConnectPoll::Pending => {}
-            QuickConnectPoll::Error(e) if e.contains("expired") => {
+            QuickConnectPoll::Expired => {
                 set_state(OAuthState::Expired);
                 return;
             }

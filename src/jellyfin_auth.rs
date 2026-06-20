@@ -61,6 +61,8 @@ pub enum QuickConnectPoll {
     Authorized,
     /// Still waiting for approval.
     Pending,
+    /// The code is no longer valid (the server returned 404).
+    Expired,
     /// A network or server error occurred.
     Error(String),
 }
@@ -132,9 +134,7 @@ pub fn poll_quick_connect(server_url: &str, secret: &str) -> QuickConnectPoll {
             Ok(_) => QuickConnectPoll::Pending,
             Err(e) => QuickConnectPoll::Error(format!("Failed to parse Quick Connect: {e}")),
         },
-        Err(ureq::Error::StatusCode(404)) => {
-            QuickConnectPoll::Error("Quick Connect code expired".to_string())
-        }
+        Err(ureq::Error::StatusCode(404)) => QuickConnectPoll::Expired,
         Err(ureq::Error::StatusCode(code)) => QuickConnectPoll::Error(format!("HTTP {code}")),
         Err(e) => QuickConnectPoll::Error(format!("Network error: {e}")),
     }
