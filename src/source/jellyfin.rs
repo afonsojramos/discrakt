@@ -301,21 +301,25 @@ impl JellyfinSource {
                     if !localized_show.is_empty() {
                         title = localized_show;
                     }
-                    if let Some(s) = season {
-                        poster_url =
-                            self.tmdb
-                                .get_poster(MediaType::Show, id.to_string(), token, s);
-                        if let Some(n) = number {
-                            let localized_episode = self.tmdb.get_title(
-                                MediaType::Show,
-                                id.to_string(),
-                                token,
-                                Some(s),
-                                Some(n),
-                            );
-                            if !localized_episode.is_empty() {
-                                episode_title = localized_episode;
-                            }
+                    // Posters are season-specific; fall back to season 0 when the
+                    // library didn't tag the episode with a season, so the episode
+                    // still gets artwork instead of silently rendering with none.
+                    poster_url = self.tmdb.get_poster(
+                        MediaType::Show,
+                        id.to_string(),
+                        token,
+                        season.unwrap_or(0),
+                    );
+                    if let (Some(s), Some(n)) = (season, number) {
+                        let localized_episode = self.tmdb.get_title(
+                            MediaType::Show,
+                            id.to_string(),
+                            token,
+                            Some(s),
+                            Some(n),
+                        );
+                        if !localized_episode.is_empty() {
+                            episode_title = localized_episode;
                         }
                     }
                 }
