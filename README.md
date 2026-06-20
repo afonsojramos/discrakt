@@ -1,15 +1,15 @@
-# Discrakt - Easy to Use Trakt/Plex Discord Rich Presence
+# Discrakt - Easy to Use Trakt/Plex/Jellyfin Discord Rich Presence
 
 <p align="center"><img src="./assets/discrakt-wordmark.svg" width="450" alt="Discrakt"><p>
 
 <p align="center">
-  <a href="https://github.com/afonsojramos/discrakt/actions/workflows/main.yml"><img src="https://github.com/afonsojramos/discrakt/actions/workflows/build.yml/badge.svg"></a>
+  <a href="https://github.com/afonsojramos/discrakt/actions/workflows/build.yml"><img src="https://github.com/afonsojramos/discrakt/actions/workflows/build.yml/badge.svg"></a>
   <a href="https://deps.rs/repo/github/afonsojramos/discrakt"><img src="https://deps.rs/repo/github/afonsojramos/discrakt/status.svg"></a>
-  <a href="https://github.com/afonsojramos/discrakt/"><img src="https://img.shields.io/badge/rustc-1.88-blue.svg"></a>
+  <a href="https://github.com/afonsojramos/discrakt/"><img src="https://img.shields.io/badge/rustc-1.96-blue.svg"></a>
   <a href="https://github.com/afonsojramos/discrakt/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
-A simple app that acts as a bridge between [Discord](https://discord.com/) and [Trakt](https://trakt.tv) or [Plex](https://www.plex.tv/), allowing for the display of the watch status as [Discord's Rich Presence](https://discord.com/rich-presence). Essentially, it's a Trakt/Plex Discord Rich Presence.
+A simple app that acts as a bridge between [Discord](https://discord.com/) and [Trakt](https://trakt.tv), [Plex](https://www.plex.tv/), or [Jellyfin](https://jellyfin.org/), allowing for the display of the watch status as [Discord's Rich Presence](https://discord.com/rich-presence). Essentially, it's a Trakt/Plex/Jellyfin Discord Rich Presence.
 
 <p align="center"><img src="./docs/demo/member-list.png" width="260px"><p>
 
@@ -17,17 +17,17 @@ A simple app that acts as a bridge between [Discord](https://discord.com/) and [
 
 <p align="center"><img src="./docs/demo/tray.png" width="260px" alt="Tray"><p>
 
-**How it works**: Discrakt polls your Trakt.tv account for "currently watching" status and displays it on Discord. For this to work, **your streaming app must scrobble to Trakt** — meaning it reports what you're watching to Trakt in real-time.
+**How it works**: Discrakt mirrors what you're watching to Discord as Rich Presence. There are two ways to connect it:
 
-Popular apps with Trakt integration include:
+**1. Via Trakt** — works with any app that scrobbles to Trakt, so your status shows up **wherever and in whatever app you watch** (TV, phone, across the world), as long as one device is running **Discord** and **Discrakt**. Popular apps with Trakt integration:
 
 - **Stremio** — Enable the [Trakt addon](https://www.stremio.com/addons) in Settings → Addons
 - **Plex** — Use the [Plex-Trakt-Scrobbler](https://github.com/trakt/Plex-Trakt-Scrobbler) plugin
 - **Kodi**, **Infuse**, **VLC** and [many more](https://trakt.tv/apps)
 
-Once your app is scrobbling to Trakt, Discrakt will display your watch status on Discord, **wherever you are watching** (TV, phone, across the world), **in whatever app**, as long as you have a single device running **Discord** and **Discrakt**.
+**2. Direct Plex or Jellyfin connection** — Discrakt connects straight to your **Plex** or **Jellyfin** server and mirrors your active session, with no Trakt account or external scrobbling needed. You log in during setup (Plex login, or Jellyfin Quick Connect) and Discrakt polls the server for what you're currently playing.
 
-**Plex / Jellyfin (direct)**: Alternatively, Discrakt can connect straight to your **Plex** or **Jellyfin** server and mirror your active session, with no Trakt account or external scrobbling needed. You log in during setup (Plex login, or Jellyfin Quick Connect), and Discrakt polls the server for what you are currently playing. Movie and show artwork plus localized titles are still fetched from TMDB.
+Either way, movie and show artwork plus localized titles are fetched from TMDB.
 
 ## Features
 
@@ -36,16 +36,11 @@ Once your app is scrobbling to Trakt, Discrakt will display your watch status on
   - _Localized titles for movies and episodes are fetched via TMDB._
 - Separate Discord Rich Presence apps for Movies and TV Shows
 - Movie posters and show artwork displayed via TMDB
-- Direct links to IMDB and Trakt pages
+- Direct link to the title's page on TMDB (IMDB as a fallback)
 - Progress bar showing watch percentage
 - System tray integration with pause/resume functionality
 - Start at login option
-- Browser-based setup wizard (Trakt OAuth device flow, or a direct Plex connection)
-
-Plex Rich Presence alternatives:
-
-- [discord-rich-presence-plex](https://github.com/Phineas05/discord-rich-presence-plex)
-- [plex-rich-presence](https://github.com/Ombrelin/plex-rich-presence)
+- Browser-based setup wizard (Trakt login, or a direct Plex / Jellyfin connection)
 
 ## Setup
 
@@ -210,3 +205,5 @@ To build the Rust binary against a prebuilt `setup-ui/dist` without invoking pnp
 ## Thank You
 
 `movie` and `tv` icons by [iconixar](https://www.flaticon.com/authors/iconixar)
+
+This product uses the TMDB API but is not endorsed or certified by [TMDB](https://www.themoviedb.org/).
