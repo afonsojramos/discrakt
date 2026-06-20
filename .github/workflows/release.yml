@@ -23,11 +23,9 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: "aarch64-unknown-linux-gnu, x86_64-unknown-linux-musl"
 
-      # rust-toolchain.toml pins a version-named toolchain, so the cross targets
-      # must be added to it (the action adds them to `stable`, which cargo ignores).
+      # Cross targets must go on the rust-toolchain.toml-pinned toolchain that
+      # cargo actually uses (not the `stable` the action installs as default).
       - name: Add cross-compile targets to the pinned toolchain
         run: rustup target add aarch64-unknown-linux-gnu x86_64-unknown-linux-musl
 
@@ -56,6 +54,7 @@ jobs:
         run: |
           mise exec -- pnpm install --frozen-lockfile
           mise exec -- pnpm run build
+          test -f dist/index.html # fail loudly if the build produced no dist
 
       - name: Build amd64
         run: cargo build --release
@@ -187,6 +186,7 @@ jobs:
         run: |
           mise exec -- pnpm install --frozen-lockfile
           mise exec -- pnpm run build
+          test -f dist/index.html # fail loudly if the build produced no dist
 
       - name: Build win64
         env:
@@ -233,11 +233,9 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: "aarch64-apple-darwin, x86_64-apple-darwin"
 
-      # rust-toolchain.toml pins a version-named toolchain, so the cross targets
-      # must be added to it (the action adds them to `stable`, which cargo ignores).
+      # Cross targets must go on the rust-toolchain.toml-pinned toolchain that
+      # cargo actually uses (not the `stable` the action installs as default).
       - name: Add cross-compile targets to the pinned toolchain
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
@@ -260,6 +258,7 @@ jobs:
         run: |
           mise exec -- pnpm install --frozen-lockfile
           mise exec -- pnpm run build
+          test -f dist/index.html # fail loudly if the build produced no dist
 
       - name: Build arm64 (Apple Silicon)
         run: cargo build --release --target=aarch64-apple-darwin
