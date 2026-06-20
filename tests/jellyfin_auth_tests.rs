@@ -1,7 +1,7 @@
 // Tests for the Jellyfin Quick Connect flow.
 
 use discrakt::jellyfin_auth::{
-    authenticate_with_quick_connect, auth_header, initiate_quick_connect, poll_quick_connect,
+    auth_header, authenticate_with_quick_connect, initiate_quick_connect, poll_quick_connect,
     JellyfinAuth, QuickConnectPoll,
 };
 
@@ -22,7 +22,10 @@ fn test_initiate_quick_connect() {
     let mut server = mockito::Server::new();
     let mock = server
         .mock("GET", "/QuickConnect/Initiate")
-        .match_header("authorization", mockito::Matcher::Regex("MediaBrowser".into()))
+        .match_header(
+            "authorization",
+            mockito::Matcher::Regex("MediaBrowser".into()),
+        )
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"Secret": "sec-1", "Code": "123456", "Authenticated": false}"#)
@@ -41,7 +44,10 @@ fn test_poll_quick_connect_pending_then_authorized() {
 
     let pending = server
         .mock("GET", "/QuickConnect/Connect")
-        .match_query(mockito::Matcher::UrlEncoded("secret".into(), "sec-1".into()))
+        .match_query(mockito::Matcher::UrlEncoded(
+            "secret".into(),
+            "sec-1".into(),
+        ))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"Secret": "sec-1", "Code": "123456", "Authenticated": false}"#)
@@ -54,7 +60,10 @@ fn test_poll_quick_connect_pending_then_authorized() {
 
     let approved = server
         .mock("GET", "/QuickConnect/Connect")
-        .match_query(mockito::Matcher::UrlEncoded("secret".into(), "sec-1".into()))
+        .match_query(mockito::Matcher::UrlEncoded(
+            "secret".into(),
+            "sec-1".into(),
+        ))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"Secret": "sec-1", "Code": "123456", "Authenticated": true}"#)
