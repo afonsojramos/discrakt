@@ -387,6 +387,26 @@ jobs:
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler validate "$DMG_PATH"
 
+      - name: Sign Homebrew binaries
+        if: env.MACOS_SIGNING_IDENTITY != ''
+        env:
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          # Developer ID sign the per-arch binaries that go into the Homebrew
+          # tarballs. The DMG signs the universal binary inside the .app; these
+          # thin binaries are separate files. Not notarized: a bare Mach-O can't
+          # be stapled, and Homebrew formula installs don't quarantine, so the
+          # signature is for attribution and future-proofing only.
+          for bin in \
+            target/aarch64-apple-darwin/release/discrakt \
+            target/x86_64-apple-darwin/release/discrakt; do
+            codesign --force --options runtime \
+              --sign "$MACOS_SIGNING_IDENTITY" \
+              --timestamp \
+              "$bin"
+            codesign --verify --strict --verbose=2 "$bin"
+          done
+
       - name: Create Homebrew tarballs
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
