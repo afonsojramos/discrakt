@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use chrono::{DateTime, FixedOffset, Utc};
+use lru::LruCache;
 use serde::Deserialize;
 use ureq::Agent;
 
@@ -15,6 +16,8 @@ use crate::utils::{user_agent, MediaType};
 const TICKS_PER_MS: i64 = 10_000;
 /// Runtime assumed when Jellyfin reports none, so the session still displays.
 const DEFAULT_RUNTIME_MS: i64 = 2 * 60 * 60 * 1000;
+/// Upper bound on cached series-to-TMDB-id mappings.
+const SERIES_CACHE_SIZE: usize = 512;
 
 /// Configuration for a [`JellyfinSource`].
 #[derive(Clone, Default)]
@@ -100,7 +103,7 @@ pub struct JellyfinSource {
     tmdb_token: String,
     retry_config: RetryConfig,
     /// Caches the TMDB id resolved for a series id, so the lookup happens once.
-    series_tmdb_cache: HashMap<String, Option<u32>>,
+    series_tmdb_cache: LruCache<String, Option<u32>>,
 }
 
 impl JellyfinSource {
@@ -120,7 +123,9 @@ impl JellyfinSource {
             tmdb: Tmdb::new(config.tmdb_base_url, config.language),
             tmdb_token: config.tmdb_token,
             retry_config: RetryConfig::default(),
-            series_tmdb_cache: HashMap::new(),
+            series_tmdb_cache: LruCache::new(
+                NonZeroUsize::new(SERIES_CACHE_SIZE).expect("SERIES_CACHE_SIZE must be non-zero"),
+            ),
         }
     }
 
@@ -212,8 +217,7 @@ impl JellyfinSource {
                     .and_then(|item| item.provider_ids.as_ref())
                     .and_then(|ids| ids.tmdb.as_ref())
                     .and_then(|id| id.parse().ok());
-                self.series_tmdb_cache
-                    .insert(series_id.to_string(), tmdb_id);
+                self.series_tmdb_cache.put(series_id.to_string(), tmdb_id);
                 tmdb_id
             }
             // Don't cache transient failures, so the next poll retries instead of
