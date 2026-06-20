@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { ChevronDown, ExternalLink, Loader2 } from "lucide-react";
 
+import { JellyfinIcon, PlexIcon, TraktIcon } from "@/components/brand-icons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -117,9 +118,18 @@ function SetupScreen({ error, setError, onAuth, onDone }: SetupProps) {
   return (
     <Tabs defaultValue="trakt" onValueChange={() => setError(null)} className="gap-5">
       <TabsList className="w-full">
-        <TabsTrigger value="trakt">Trakt</TabsTrigger>
-        <TabsTrigger value="plex">Plex</TabsTrigger>
-        <TabsTrigger value="jellyfin">Jellyfin</TabsTrigger>
+        <TabsTrigger value="trakt">
+          <TraktIcon />
+          Trakt
+        </TabsTrigger>
+        <TabsTrigger value="plex">
+          <PlexIcon />
+          Plex
+        </TabsTrigger>
+        <TabsTrigger value="jellyfin">
+          <JellyfinIcon />
+          Jellyfin
+        </TabsTrigger>
       </TabsList>
 
       {error && <ErrorBox message={error} />}
