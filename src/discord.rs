@@ -63,12 +63,25 @@ pub fn build_payload(watching: &Watching) -> Payload {
     let large_image = watching.poster_url.clone().unwrap_or_else(|| media.clone());
 
     let mut buttons = Vec::new();
-    if let Some(imdb_url) = &watching.imdb_url {
+    // Primary: the movie/show page. Prefer TMDB (its id is resolved for every
+    // source), falling back to IMDB when no TMDB id is available.
+    if let Some(tmdb) = watching.ids.tmdb {
+        let path = match watching.kind {
+            MediaKind::Movie => "movie",
+            MediaKind::Episode => "tv",
+        };
+        buttons.push((
+            "TMDB".to_string(),
+            format!("https://www.themoviedb.org/{path}/{tmdb}"),
+        ));
+    } else if let Some(imdb_url) = &watching.imdb_url {
         buttons.push(("IMDB".to_string(), imdb_url.clone()));
     }
-    if let Some((label, url)) = &watching.source_link {
-        buttons.push((label.clone(), url.clone()));
-    }
+    // Secondary: always link back to the project.
+    buttons.push((
+        "Discrakt".to_string(),
+        env!("CARGO_PKG_REPOSITORY").to_string(),
+    ));
 
     Payload {
         details,

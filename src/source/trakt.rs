@@ -78,12 +78,6 @@ impl TraktSource {
                         .imdb
                         .as_ref()
                         .map(|imdb| format!("https://www.imdb.com/title/{}", imdb)),
-                    source_link: slug.map(|slug| {
-                        (
-                            "Trakt".to_string(),
-                            format!("https://trakt.tv/movies/{}", slug),
-                        )
-                    }),
                     started_at,
                     expires_at,
                     runtime_minutes: movie.runtime.filter(|&r| r > 0),
@@ -148,12 +142,6 @@ impl TraktSource {
                         .imdb
                         .as_ref()
                         .map(|imdb| format!("https://www.imdb.com/title/{}", imdb)),
-                    source_link: slug.map(|slug| {
-                        (
-                            "Trakt".to_string(),
-                            format!("https://trakt.tv/shows/{}", slug),
-                        )
-                    }),
                     started_at,
                     expires_at,
                     runtime_minutes,

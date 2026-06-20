@@ -42,8 +42,6 @@ pub struct Watching {
     pub poster_url: Option<String>,
     /// IMDB page URL for the title, when available.
     pub imdb_url: Option<String>,
-    /// A source-specific deep link rendered as a button, e.g. `("Trakt", url)`.
-    pub source_link: Option<(String, String)>,
     pub started_at: DateTime<FixedOffset>,
     pub expires_at: DateTime<FixedOffset>,
     /// Runtime in minutes when known; used to derive a precise progress window.

@@ -62,23 +62,42 @@ fn test_build_payload_movie() {
 }
 
 #[test]
-fn test_build_payload_movie_imdb_button() {
+fn test_build_payload_movie_tmdb_button() {
     let payload = build_payload(&movie_watching());
 
     assert!(payload.buttons.contains(&(
-        "IMDB".to_string(),
-        "https://www.imdb.com/title/tt1375666".to_string()
+        "TMDB".to_string(),
+        "https://www.themoviedb.org/movie/27205".to_string()
     )));
 }
 
 #[test]
-fn test_build_payload_movie_trakt_button() {
+fn test_build_payload_movie_imdb_fallback_when_no_tmdb() {
+    let mut watching = movie_watching();
+    watching.ids.tmdb = None;
+
+    let payload = build_payload(&watching);
+
+    assert_eq!(
+        payload.buttons.first(),
+        Some(&(
+            "IMDB".to_string(),
+            "https://www.imdb.com/title/tt1375666".to_string()
+        ))
+    );
+}
+
+#[test]
+fn test_build_payload_movie_project_button_is_secondary() {
     let payload = build_payload(&movie_watching());
 
-    assert!(payload.buttons.contains(&(
-        "Trakt".to_string(),
-        "https://trakt.tv/movies/inception-2010".to_string()
-    )));
+    assert_eq!(
+        payload.buttons.last(),
+        Some(&(
+            "Discrakt".to_string(),
+            env!("CARGO_PKG_REPOSITORY").to_string()
+        ))
+    );
 }
 
 #[test]
@@ -124,24 +143,27 @@ fn test_build_payload_episode() {
 }
 
 #[test]
-fn test_build_payload_episode_imdb_button() {
+fn test_build_payload_episode_tmdb_button() {
     let payload = build_payload(&episode_watching());
 
-    // Should link to the show, not the episode.
+    // Should link to the show page (tv), not the episode.
     assert!(payload.buttons.contains(&(
-        "IMDB".to_string(),
-        "https://www.imdb.com/title/tt0903747".to_string()
+        "TMDB".to_string(),
+        "https://www.themoviedb.org/tv/1396".to_string()
     )));
 }
 
 #[test]
-fn test_build_payload_episode_trakt_button() {
+fn test_build_payload_episode_project_button_is_secondary() {
     let payload = build_payload(&episode_watching());
 
-    assert!(payload.buttons.contains(&(
-        "Trakt".to_string(),
-        "https://trakt.tv/shows/breaking-bad".to_string()
-    )));
+    assert_eq!(
+        payload.buttons.last(),
+        Some(&(
+            "Discrakt".to_string(),
+            env!("CARGO_PKG_REPOSITORY").to_string()
+        ))
+    );
 }
 
 #[test]
@@ -170,16 +192,22 @@ fn test_build_payload_episode_formatting() {
 // ============================================================================
 
 #[test]
-fn test_build_payload_movie_missing_ids_has_no_buttons() {
+fn test_build_payload_movie_without_metadata_ids_keeps_project_button() {
     let mut watching = movie_watching();
+    watching.ids.tmdb = None;
     watching.imdb_url = None;
-    watching.source_link = None;
 
     let payload = build_payload(&watching);
 
-    // Still renders, just without buttons.
+    // Still renders; the project button is always present even with no metadata ids.
     assert_eq!(payload.details, "Inception (2010)");
-    assert!(payload.buttons.is_empty());
+    assert_eq!(
+        payload.buttons,
+        vec![(
+            "Discrakt".to_string(),
+            env!("CARGO_PKG_REPOSITORY").to_string()
+        )]
+    );
 }
 
 // ============================================================================

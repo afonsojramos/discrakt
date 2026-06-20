@@ -79,13 +79,6 @@ fn test_trakt_source_enriches_movie() {
         result.imdb_url.as_deref(),
         Some("https://www.imdb.com/title/tt1375666")
     );
-    assert_eq!(
-        result.source_link,
-        Some((
-            "Trakt".to_string(),
-            "https://trakt.tv/movies/inception-2010".to_string()
-        ))
-    );
     assert_eq!(result.runtime_minutes, Some(150));
 }
 
@@ -142,13 +135,6 @@ fn test_trakt_source_enriches_episode() {
     assert_eq!(
         result.poster_url.as_deref(),
         Some("https://image.tmdb.org/t/p/w600_and_h600_bestv2/show.jpg")
-    );
-    assert_eq!(
-        result.source_link,
-        Some((
-            "Trakt".to_string(),
-            "https://trakt.tv/shows/breaking-bad".to_string()
-        ))
     );
     assert_eq!(result.runtime_minutes, Some(60));
 }
@@ -271,7 +257,6 @@ fn test_plex_source_enriches_movie() {
         result.imdb_url.as_deref(),
         Some("https://www.imdb.com/title/tt1375666")
     );
-    assert_eq!(result.source_link, None);
 }
 
 #[test]

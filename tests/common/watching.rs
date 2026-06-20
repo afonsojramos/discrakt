@@ -21,10 +21,6 @@ pub fn movie_watching() -> Watching {
         rating: Some(8.5),
         poster_url: Some("https://image.tmdb.org/t/p/w600_and_h600_bestv2/poster.jpg".to_string()),
         imdb_url: Some("https://www.imdb.com/title/tt1375666".to_string()),
-        source_link: Some((
-            "Trakt".to_string(),
-            "https://trakt.tv/movies/inception-2010".to_string(),
-        )),
         started_at: DateTime::parse_from_rfc3339("2024-01-15T10:00:00.000Z").unwrap(),
         expires_at: DateTime::parse_from_rfc3339("2024-01-15T12:30:00.000Z").unwrap(),
         runtime_minutes: None,
@@ -48,10 +44,6 @@ pub fn episode_watching() -> Watching {
         rating: None,
         poster_url: None,
         imdb_url: Some("https://www.imdb.com/title/tt0903747".to_string()),
-        source_link: Some((
-            "Trakt".to_string(),
-            "https://trakt.tv/shows/breaking-bad".to_string(),
-        )),
         started_at: DateTime::parse_from_rfc3339("2024-01-15T10:00:00.000Z").unwrap(),
         expires_at: DateTime::parse_from_rfc3339("2024-01-15T11:00:00.000Z").unwrap(),
         runtime_minutes: None,
