@@ -761,3 +761,78 @@ fn test_jellyfin_source_ignores_other_users_and_paused() {
     let mut source2 = jellyfin_source(server2.url(), paused, &mut server2);
     assert!(source2.get_watching().is_none());
 }
+
+#[test]
+fn test_jellyfin_source_window_reflects_position_and_runtime() {
+    // 8880s runtime, 600s into it (ticks are 100ns, so 10,000 per ms). The window
+    // span must equal the full runtime and the start must sit ~600s in the past.
+    let body = r#"[{
+        "UserId": "u1", "UserName": "alice",
+        "NowPlayingItem": {
+            "Name": "Some Movie", "Type": "Movie",
+            "RunTimeTicks": 88800000000
+        },
+        "PlayState": {"PositionTicks": 6000000000, "IsPaused": false}
+    }]"#;
+    let mut server = mockito::Server::new();
+    let mut source = jellyfin_source(server.url(), body, &mut server);
+    let result = source.get_watching().expect("movie should be playing");
+
+    let window = result.expires_at.timestamp() - result.started_at.timestamp();
+    assert_eq!(window, 8880, "window should equal the full runtime");
+    let elapsed = chrono::Utc::now().timestamp() - result.started_at.timestamp();
+    assert!((599..=602).contains(&elapsed), "start was {elapsed}s ago");
+}
+
+#[test]
+fn test_jellyfin_source_missing_runtime_uses_default_window() {
+    // No RunTimeTicks must not collapse to a zero-length window (which main would
+    // treat as already expired); it falls back to the 2h default.
+    let body = r#"[{
+        "UserId": "u1", "UserName": "alice",
+        "NowPlayingItem": {"Name": "Some Movie", "Type": "Movie"},
+        "PlayState": {"IsPaused": false}
+    }]"#;
+    let mut server = mockito::Server::new();
+    let mut source = jellyfin_source(server.url(), body, &mut server);
+    let result = source.get_watching().expect("movie should be playing");
+
+    let window = result.expires_at.timestamp() - result.started_at.timestamp();
+    assert_eq!(window, 7200, "window should be the 2h default");
+}
+
+#[test]
+fn test_jellyfin_source_episode_without_series_tmdb_falls_back_to_jellyfin_titles() {
+    // When the series lookup yields no TMDB id, the episode keeps Jellyfin's own
+    // series name and episode title and renders without a poster.
+    let body = r#"[{
+        "UserId": "u1", "UserName": "alice",
+        "NowPlayingItem": {
+            "Name": "Felina", "Type": "Episode",
+            "SeriesName": "Breaking Bad", "SeriesId": "series1",
+            "IndexNumber": 16, "ParentIndexNumber": 5,
+            "RunTimeTicks": 31200000000
+        },
+        "PlayState": {"PositionTicks": 600000000, "IsPaused": false}
+    }]"#;
+    let mut server = mockito::Server::new();
+    let url = server.url();
+
+    let series = server
+        .mock("GET", "/Items")
+        .match_query(mockito::Matcher::UrlEncoded("ids".into(), "series1".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"Items": []}"#)
+        .create();
+
+    let mut source = jellyfin_source(url, body, &mut server);
+    let result = source.get_watching().expect("episode should be playing");
+
+    series.assert();
+    assert_eq!(result.kind, MediaKind::Episode);
+    assert_eq!(result.title, "Breaking Bad");
+    assert_eq!(result.episode_title.as_deref(), Some("Felina"));
+    assert_eq!(result.ids.tmdb, None);
+    assert_eq!(result.poster_url, None);
+}
