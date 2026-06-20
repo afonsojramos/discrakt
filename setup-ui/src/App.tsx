@@ -1,4 +1,4 @@
-import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
+import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from "react";
 import { ChevronDown, ExternalLink, Loader2 } from "lucide-react";
 
 import { JellyfinIcon, PlexIcon, TraktIcon } from "@/components/brand-icons";
@@ -488,9 +488,15 @@ function SuccessScreen() {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
+  const closed = useRef(false);
   useEffect(() => {
     if (seconds <= 0) {
-      window.close();
+      // window.close() is a no-op for tabs the browser opened (not script);
+      // attempt it once rather than on every later visibility toggle.
+      if (!closed.current) {
+        closed.current = true;
+        window.close();
+      }
       return;
     }
     if (!visible) return;
