@@ -168,12 +168,13 @@ impl JellyfinSource {
     }
 
     fn is_playing(session: &Session) -> bool {
-        session.now_playing_item.is_some()
-            && !session
-                .play_state
-                .as_ref()
-                .and_then(|p| p.is_paused)
-                .unwrap_or(false)
+        // Require play state: a session with a now-playing item but no play state
+        // isn't actively playing, and treating it as such would surface stale data
+        // from position 0. Mirrors the Plex source's stricter default.
+        let Some(play_state) = session.play_state.as_ref() else {
+            return false;
+        };
+        session.now_playing_item.is_some() && !play_state.is_paused.unwrap_or(false)
     }
 
     /// Resolves a series' TMDB id (cached), since a session exposes only the
