@@ -228,7 +228,7 @@ pub fn discover_plex_server(
     if candidates.is_empty() {
         return Err("No Plex servers found for this account".to_string());
     }
-    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    candidates.sort_by_key(|b| std::cmp::Reverse(b.0));
 
     // Probe each in preference order; use the first that responds.
     let probe = Agent::config_builder()
