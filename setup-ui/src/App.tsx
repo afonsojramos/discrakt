@@ -56,6 +56,7 @@ export function App() {
         // transient network error; keep polling
       }
     };
+    void check();
     const id = setInterval(check, screen.info.intervalSeconds * 1000);
     // Browsers throttle background-tab timers, so the user authorizing in another
     // tab wouldn't see completion until they return. Re-check the moment this tab
