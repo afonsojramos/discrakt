@@ -26,6 +26,11 @@ jobs:
         with:
           targets: "aarch64-unknown-linux-gnu, x86_64-unknown-linux-musl"
 
+      # rust-toolchain.toml pins a version-named toolchain, so the cross targets
+      # must be added to it (the action adds them to `stable`, which cargo ignores).
+      - name: Add cross-compile targets to the pinned toolchain
+        run: rustup target add aarch64-unknown-linux-gnu x86_64-unknown-linux-musl
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
@@ -230,6 +235,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: "aarch64-apple-darwin, x86_64-apple-darwin"
+
+      # rust-toolchain.toml pins a version-named toolchain, so the cross targets
+      # must be added to it (the action adds them to `stable`, which cargo ignores).
+      - name: Add cross-compile targets to the pinned toolchain
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
