@@ -121,7 +121,8 @@ pub fn poll_quick_connect(server_url: &str, secret: &str) -> QuickConnectPoll {
     let agent = jellyfin_agent();
 
     let response = agent
-        .get(&format!("{base}/QuickConnect/Connect?secret={secret}"))
+        .get(&format!("{base}/QuickConnect/Connect"))
+        .query("secret", secret)
         .header("Accept", "application/json")
         .call();
 
