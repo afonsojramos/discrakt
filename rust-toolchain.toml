@@ -1,0 +1,6 @@
+# Pin the toolchain so local and CI use the exact same rustc/clippy/rustfmt.
+# Bump this deliberately (and run `cargo clippy` locally) when adopting a new
+# Rust release, rather than letting CI's `stable` drift ahead of contributors.
+[toolchain]
+channel = "1.96.0"
+components = ["clippy", "rustfmt"]
