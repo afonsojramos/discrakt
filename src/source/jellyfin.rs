@@ -183,14 +183,19 @@ impl JellyfinSource {
             return *cached;
         }
 
-        let endpoint = format!("{}/Items?ids={}", self.server_url, series_id);
+        let endpoint = format!("{}/Items", self.server_url);
         let agent = &self.agent;
         let header = auth_header(&self.device_id, Some(&self.access_token));
 
+        // Jellyfin omits ProviderIds from the slim item DTO unless explicitly
+        // requested, so without `Fields=ProviderIds` the TMDB id is never found
+        // and the episode loses its artwork and localized title.
         let result: Result<ItemsResponse, RetryError> = execute_with_retry(
             || {
                 agent
                     .get(&endpoint)
+                    .query("ids", series_id)
+                    .query("Fields", "ProviderIds")
                     .header("Accept", "application/json")
                     .header("Authorization", &header)
                     .call()
