@@ -203,22 +203,25 @@ impl JellyfinSource {
             &self.retry_config,
         );
 
-        let tmdb_id = match result {
-            Ok(response) => response
-                .items
-                .first()
-                .and_then(|item| item.provider_ids.as_ref())
-                .and_then(|ids| ids.tmdb.as_ref())
-                .and_then(|id| id.parse().ok()),
+        match result {
+            Ok(response) => {
+                let tmdb_id = response
+                    .items
+                    .first()
+                    .and_then(|item| item.provider_ids.as_ref())
+                    .and_then(|ids| ids.tmdb.as_ref())
+                    .and_then(|id| id.parse().ok());
+                self.series_tmdb_cache
+                    .insert(series_id.to_string(), tmdb_id);
+                tmdb_id
+            }
+            // Don't cache transient failures, so the next poll retries instead of
+            // pinning the series to "no artwork" for the rest of the process.
             Err(err) => {
                 tracing::debug!(error = %err, series_id, "Failed to resolve Jellyfin series ids");
                 None
             }
-        };
-
-        self.series_tmdb_cache
-            .insert(series_id.to_string(), tmdb_id);
-        tmdb_id
+        }
     }
 
     fn enrich(&mut self, session: &Session) -> Option<Watching> {

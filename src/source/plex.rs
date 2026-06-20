@@ -224,20 +224,23 @@ impl PlexSource {
             &self.retry_config,
         );
 
-        let tmdb_id = match result {
-            Ok(response) => response
-                .media_container
-                .metadata
-                .first()
-                .and_then(|item| extract_tmdb_id(&item.guids)),
+        match result {
+            Ok(response) => {
+                let tmdb_id = response
+                    .media_container
+                    .metadata
+                    .first()
+                    .and_then(|item| extract_tmdb_id(&item.guids));
+                self.tmdb_id_cache.insert(rating_key.to_string(), tmdb_id);
+                tmdb_id
+            }
+            // Don't cache transient failures, so the next poll retries instead of
+            // pinning the title to "no artwork" for the rest of the process.
             Err(err) => {
                 tracing::debug!(error = %err, rating_key, "Failed to fetch Plex metadata for ids");
                 None
             }
-        };
-
-        self.tmdb_id_cache.insert(rating_key.to_string(), tmdb_id);
-        tmdb_id
+        }
     }
 
     fn enrich(&mut self, meta: &PlexMetadata) -> Option<Watching> {
