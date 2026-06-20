@@ -12,6 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # Build the setup-ui in a dedicated step (below) so the cargo build doesn't
+      # depend on pnpm being resolvable on PATH from build.rs.
+      DISCRAKT_SKIP_UI_BUILD: "1"
 
     steps:
       - name: Checkout
@@ -21,6 +25,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: "aarch64-unknown-linux-gnu, x86_64-unknown-linux-musl"
+
+      # rust-toolchain.toml pins a version-named toolchain, so the cross targets
+      # must be added to it (the action adds them to `stable`, which cargo ignores).
+      - name: Add cross-compile targets to the pinned toolchain
+        run: rustup target add aarch64-unknown-linux-gnu x86_64-unknown-linux-musl
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -40,6 +49,13 @@ jobs:
 
       - name: Set up Node and pnpm
         uses: jdx/mise-action@v2
+
+      - name: Build setup-ui
+        shell: bash
+        working-directory: setup-ui
+        run: |
+          mise exec -- pnpm install --frozen-lockfile
+          mise exec -- pnpm run build
 
       - name: Build amd64
         run: cargo build --release
@@ -138,6 +154,10 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      # Build the setup-ui in a dedicated step (below); on Windows the mise shims
+      # aren't on PATH for build.rs, so let cargo reuse the prebuilt dist instead.
+      DISCRAKT_SKIP_UI_BUILD: "1"
 
     steps:
       - name: Checkout
@@ -160,6 +180,13 @@ jobs:
 
       - name: Set up Node and pnpm
         uses: jdx/mise-action@v2
+
+      - name: Build setup-ui
+        shell: bash
+        working-directory: setup-ui
+        run: |
+          mise exec -- pnpm install --frozen-lockfile
+          mise exec -- pnpm run build
 
       - name: Build win64
         env:
@@ -196,6 +223,9 @@ jobs:
       contents: write
     env:
       MACOSX_DEPLOYMENT_TARGET: "10.13"
+      # Build the setup-ui in a dedicated step (below) so the per-target cargo
+      # builds reuse one prebuilt dist instead of invoking pnpm from build.rs.
+      DISCRAKT_SKIP_UI_BUILD: "1"
 
     steps:
       - name: Checkout
@@ -205,6 +235,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: "aarch64-apple-darwin, x86_64-apple-darwin"
+
+      # rust-toolchain.toml pins a version-named toolchain, so the cross targets
+      # must be added to it (the action adds them to `stable`, which cargo ignores).
+      - name: Add cross-compile targets to the pinned toolchain
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -218,6 +253,13 @@ jobs:
 
       - name: Set up Node and pnpm
         uses: jdx/mise-action@v2
+
+      - name: Build setup-ui
+        shell: bash
+        working-directory: setup-ui
+        run: |
+          mise exec -- pnpm install --frozen-lockfile
+          mise exec -- pnpm run build
 
       - name: Build arm64 (Apple Silicon)
         run: cargo build --release --target=aarch64-apple-darwin
@@ -438,6 +480,8 @@ jobs:
 
   update-winget:
     needs: publish-win
+    # Skip package-manager updates for pre-releases (e.g. v4.0.0-beta.1).
+    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
 
     steps:
@@ -450,6 +494,8 @@ jobs:
 
   update-homebrew:
     needs: publish-macos
+    # Skip package-manager updates for pre-releases (e.g. v4.0.0-beta.1).
+    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
 
     steps:
