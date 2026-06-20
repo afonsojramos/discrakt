@@ -805,35 +805,43 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 }
 
                 let device_id = jellyfin_auth::generate_device_id();
+
+                // Claim the polling slot before initiating, mirroring the Trakt
+                // path: a duplicate start (double-click, reload) must not mint a
+                // fresh code that no poller is waiting on. Jellyfin keeps no stored
+                // active code to hand back, so a duplicate is asked to retry.
+                if polling_started
+                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_err()
+                {
+                    let response = Response::from_string("Login already in progress, retry")
+                        .with_status_code(StatusCode(503));
+                    let _ = request.respond(response);
+                    continue;
+                }
+
                 match jellyfin_auth::initiate_quick_connect(&server_url, &device_id) {
                     Ok(state) => {
                         if let Ok(mut s) = oauth_state.lock() {
                             *s = OAuthState::Pending;
                         }
 
-                        if polling_started
-                            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-                            .is_ok()
-                        {
-                            let oauth_state_clone = Arc::clone(&oauth_state);
-                            let setup_complete_clone = Arc::clone(&setup_complete);
-                            let result_clone = Arc::clone(&result);
-                            let state_clone = state.clone();
-                            let server = server_url.clone();
-                            let device = device_id.clone();
-                            thread::spawn(move || {
-                                poll_jellyfin_in_background(
-                                    server,
-                                    device,
-                                    state_clone,
-                                    oauth_state_clone,
-                                    setup_complete_clone,
-                                    result_clone,
-                                );
-                            });
-                        } else {
-                            tracing::warn!("Login already in progress, ignoring duplicate start");
-                        }
+                        let oauth_state_clone = Arc::clone(&oauth_state);
+                        let setup_complete_clone = Arc::clone(&setup_complete);
+                        let result_clone = Arc::clone(&result);
+                        let state_clone = state.clone();
+                        let server = server_url.clone();
+                        let device = device_id.clone();
+                        thread::spawn(move || {
+                            poll_jellyfin_in_background(
+                                server,
+                                device,
+                                state_clone,
+                                oauth_state_clone,
+                                setup_complete_clone,
+                                result_clone,
+                            );
+                        });
 
                         let response_json = serde_json::json!({
                             "code": state.code,
@@ -850,6 +858,8 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                         let _ = request.respond(response);
                     }
                     Err(e) => {
+                        // Release the slot so a later start can retry cleanly.
+                        polling_started.store(false, Ordering::SeqCst);
                         tracing::error!("Failed to start Jellyfin Quick Connect: {}", e);
                         let response = Response::from_string(format!("Quick Connect failed: {e}"))
                             .with_status_code(StatusCode(500));
