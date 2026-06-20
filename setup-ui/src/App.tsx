@@ -467,15 +467,25 @@ function AuthScreen({ info, error }: { info: AuthInfo; error: string | null }) {
 
 function SuccessScreen() {
   const [seconds, setSeconds] = useState(5);
+  // Only count down while the tab is in focus, so a user who authorized in
+  // another tab actually sees the success state before this one closes.
+  const [visible, setVisible] = useState(() => document.visibilityState === "visible");
 
   useEffect(() => {
+    const onVisibility = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
     if (seconds <= 0) {
       window.close();
       return;
     }
     const id = setTimeout(() => setSeconds((s) => s - 1), 1000);
     return () => clearTimeout(id);
-  }, [seconds]);
+  }, [seconds, visible]);
 
   return (
     <div className="flex flex-col items-center gap-3 text-center">
