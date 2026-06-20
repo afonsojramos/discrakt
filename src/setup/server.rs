@@ -421,6 +421,9 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
     // The device code the active poller is tracking, returned to any resubmit so
     // the displayed code always matches what the poller is waiting on.
     let active_device_code: Arc<Mutex<Option<DeviceCodeResponse>>> = Arc::new(Mutex::new(None));
+    // Same idea for Jellyfin Quick Connect: the code the active poller is waiting
+    // on, cleared when it expires so a later start mints a fresh one.
+    let active_jellyfin_code: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     // Open browser to setup page
     let url = format!("http://127.0.0.1:{port}");
@@ -808,14 +811,29 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 
                 // Claim the polling slot before initiating, mirroring the Trakt
                 // path: a duplicate start (double-click, reload) must not mint a
-                // fresh code that no poller is waiting on. Jellyfin keeps no stored
-                // active code to hand back, so a duplicate is asked to retry.
+                // fresh code that no poller is waiting on. Instead, hand back the
+                // code the running poller is already tracking. The poller releases
+                // the slot when its code expires, so a later start can begin fresh.
                 if polling_started
                     .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                     .is_err()
                 {
-                    let response = Response::from_string("Login already in progress, retry")
-                        .with_status_code(StatusCode(503));
+                    let active = active_jellyfin_code.lock().ok().and_then(|g| g.clone());
+                    let response = match active {
+                        Some(code) => {
+                            let json =
+                                serde_json::json!({ "code": code, "interval": 2 }).to_string();
+                            Response::from_string(json).with_header(
+                                tiny_http::Header::from_bytes(
+                                    &b"Content-Type"[..],
+                                    &b"application/json"[..],
+                                )
+                                .unwrap(),
+                            )
+                        }
+                        None => Response::from_string("Login already starting, retry")
+                            .with_status_code(StatusCode(503)),
+                    };
                     let _ = request.respond(response);
                     continue;
                 }
@@ -825,10 +843,15 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                         if let Ok(mut s) = oauth_state.lock() {
                             *s = OAuthState::Pending;
                         }
+                        if let Ok(mut guard) = active_jellyfin_code.lock() {
+                            *guard = Some(state.code.clone());
+                        }
 
                         let oauth_state_clone = Arc::clone(&oauth_state);
                         let setup_complete_clone = Arc::clone(&setup_complete);
                         let result_clone = Arc::clone(&result);
+                        let polling_started_clone = Arc::clone(&polling_started);
+                        let active_code_clone = Arc::clone(&active_jellyfin_code);
                         let state_clone = state.clone();
                         let server = server_url.clone();
                         let device = device_id.clone();
@@ -840,6 +863,8 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                                 oauth_state_clone,
                                 setup_complete_clone,
                                 result_clone,
+                                polling_started_clone,
+                                active_code_clone,
                             );
                         });
 
@@ -1009,7 +1034,7 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 
 /// Poll for Jellyfin Quick Connect approval in the background, then exchange the
 /// secret for an access token, write the config, and signal completion.
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
 fn poll_jellyfin_in_background(
     server_url: String,
     device_id: String,
@@ -1017,11 +1042,21 @@ fn poll_jellyfin_in_background(
     oauth_state: Arc<Mutex<OAuthState>>,
     setup_complete: Arc<AtomicBool>,
     result: Arc<Mutex<Option<SetupResult>>>,
+    polling_started: Arc<AtomicBool>,
+    active_code: Arc<Mutex<Option<String>>>,
 ) {
     let deadline = Instant::now() + Duration::from_secs(300);
     let set_state = |s: OAuthState| {
         if let Ok(mut guard) = oauth_state.lock() {
             *guard = s;
+        }
+    };
+    // On any terminal non-success outcome, free the slot and forget the code so a
+    // later start can begin a fresh flow instead of being stuck on a dead code.
+    let release = || {
+        polling_started.store(false, Ordering::SeqCst);
+        if let Ok(mut guard) = active_code.lock() {
+            *guard = None;
         }
     };
 
@@ -1036,6 +1071,7 @@ fn poll_jellyfin_in_background(
                         Err(e) => {
                             tracing::error!("Jellyfin authentication failed: {}", e);
                             set_state(OAuthState::Error(format!("Authentication failed: {e}")));
+                            release();
                             return;
                         }
                     };
@@ -1049,6 +1085,7 @@ fn poll_jellyfin_in_background(
                 ) {
                     tracing::error!("Failed to write Jellyfin credentials: {}", e);
                     set_state(OAuthState::Error(format!("Failed to save: {e}")));
+                    release();
                     return;
                 }
 
@@ -1066,6 +1103,7 @@ fn poll_jellyfin_in_background(
             QuickConnectPoll::Pending => {}
             QuickConnectPoll::Expired => {
                 set_state(OAuthState::Expired);
+                release();
                 return;
             }
             QuickConnectPoll::Error(e) => {
@@ -1075,6 +1113,7 @@ fn poll_jellyfin_in_background(
     }
 
     set_state(OAuthState::Expired);
+    release();
 }
 
 /// Poll for "Login with Plex" authorization in the background.
