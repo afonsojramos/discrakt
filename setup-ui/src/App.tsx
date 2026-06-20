@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, type SyntheticEvent, useEffect, useState } from "react";
 import { ChevronDown, ExternalLink, Loader2 } from "lucide-react";
 
 import { JellyfinIcon, PlexIcon, TraktIcon } from "@/components/brand-icons";
@@ -185,7 +185,7 @@ function TraktForm({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
     }
   }
 
-  async function handlePublic(event: FormEvent) {
+  async function handlePublic(event: SyntheticEvent) {
     event.preventDefault();
     if (!username.trim()) {
       setError("Please enter your Trakt username.");
@@ -260,7 +260,7 @@ function PlexPane({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
     }
   }
 
-  async function handleManual(event: FormEvent) {
+  async function handleManual(event: SyntheticEvent) {
     event.preventDefault();
     if (!form.serverUrl.trim() || !form.token.trim()) {
       setError("Please fill in the Plex server URL and token.");
@@ -366,7 +366,7 @@ function JellyfinPane({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
     }
   }
 
-  async function handleManual(event: FormEvent) {
+  async function handleManual(event: SyntheticEvent) {
     event.preventDefault();
     if (!manual.serverUrl.trim() || !manual.apiKey.trim()) {
       setError("Please fill in the server URL and API key.");
