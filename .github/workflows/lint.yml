@@ -24,7 +24,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Set up Node and pnpm
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
 
       - name: Run clippy
         run: cargo clippy --all-features --all-targets -- -D warnings
