@@ -46,7 +46,7 @@ jobs:
         run: cargo install cargo-generate-rpm
 
       - name: Set up Node and pnpm
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
 
       - name: Build setup-ui
         shell: bash
@@ -178,7 +178,7 @@ jobs:
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
       - name: Set up Node and pnpm
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
 
       - name: Build setup-ui
         shell: bash
@@ -250,7 +250,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Set up Node and pnpm
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
 
       - name: Build setup-ui
         shell: bash
