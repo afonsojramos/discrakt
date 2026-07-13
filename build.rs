@@ -94,7 +94,7 @@ fn main() {
 /// Builds the embedded setup-ui frontend (vite-plus) into setup-ui/dist.
 ///
 /// Set `DISCRAKT_SKIP_UI_BUILD=1` to skip this and reuse an existing dist/
-/// (e.g. in environments without Node/pnpm that ship a prebuilt bundle).
+/// (e.g. in environments without Node/nub that ship a prebuilt bundle).
 fn build_setup_ui() {
     // Rebuild only when the frontend sources change.
     for path in [
@@ -118,9 +118,9 @@ fn build_setup_ui() {
 
     // Install dependencies only when they are missing (keeps incremental builds fast).
     if !ui_dir.join("node_modules").exists() {
-        run_in("pnpm", &["install", "--frozen-lockfile"], ui_dir);
+        run_in("nub", &["install", "--frozen-lockfile"], ui_dir);
     }
-    run_in("pnpm", &["run", "build"], ui_dir);
+    run_in("nub", &["run", "build"], ui_dir);
 }
 
 fn run_in(program: &str, args: &[&str], dir: &std::path::Path) {
@@ -133,7 +133,7 @@ fn run_in(program: &str, args: &[&str], dir: &std::path::Path) {
         Ok(s) if s.success() => {}
         Ok(s) => panic!("`{program} {}` failed with {s}", args.join(" ")),
         Err(e) => panic!(
-            "failed to run `{program}`: {e}. Install Node + pnpm, or set \
+            "failed to run `{program}`: {e}. Install Node + nub (mise install), or set \
              DISCRAKT_SKIP_UI_BUILD=1 to reuse a prebuilt setup-ui/dist."
         ),
     }

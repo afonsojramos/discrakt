@@ -14,7 +14,7 @@ jobs:
       contents: write
     env:
       # Build the setup-ui in a dedicated step (below) so the cargo build doesn't
-      # depend on pnpm being resolvable on PATH from build.rs.
+      # depend on nub being resolvable on PATH from build.rs.
       DISCRAKT_SKIP_UI_BUILD: "1"
 
     steps:
@@ -45,15 +45,15 @@ jobs:
       - name: Install cargo-generate-rpm
         run: cargo install cargo-generate-rpm
 
-      - name: Set up Node and pnpm
+      - name: Set up toolchain via mise (node, nub)
         uses: jdx/mise-action@v4
 
       - name: Build setup-ui
         shell: bash
         working-directory: setup-ui
         run: |
-          mise exec -- pnpm install --frozen-lockfile
-          mise exec -- pnpm run build
+          mise exec -- nub install --frozen-lockfile
+          mise exec -- nub run build
           test -f dist/index.html # fail loudly if the build produced no dist
 
       - name: Build amd64
@@ -177,15 +177,15 @@ jobs:
           $version = "${{ github.event.release.tag_name }}".TrimStart('v')
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Set up Node and pnpm
+      - name: Set up toolchain via mise (node, nub)
         uses: jdx/mise-action@v4
 
       - name: Build setup-ui
         shell: bash
         working-directory: setup-ui
         run: |
-          mise exec -- pnpm install --frozen-lockfile
-          mise exec -- pnpm run build
+          mise exec -- nub install --frozen-lockfile
+          mise exec -- nub run build
           test -f dist/index.html # fail loudly if the build produced no dist
 
       - name: Build win64
@@ -224,7 +224,7 @@ jobs:
     env:
       MACOSX_DEPLOYMENT_TARGET: "10.13"
       # Build the setup-ui in a dedicated step (below) so the per-target cargo
-      # builds reuse one prebuilt dist instead of invoking pnpm from build.rs.
+      # builds reuse one prebuilt dist instead of invoking nub from build.rs.
       DISCRAKT_SKIP_UI_BUILD: "1"
 
     steps:
@@ -249,15 +249,15 @@ jobs:
           VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Set up Node and pnpm
+      - name: Set up toolchain via mise (node, nub)
         uses: jdx/mise-action@v4
 
       - name: Build setup-ui
         shell: bash
         working-directory: setup-ui
         run: |
-          mise exec -- pnpm install --frozen-lockfile
-          mise exec -- pnpm run build
+          mise exec -- nub install --frozen-lockfile
+          mise exec -- nub run build
           test -f dist/index.html # fail loudly if the build produced no dist
 
       - name: Build arm64 (Apple Silicon)

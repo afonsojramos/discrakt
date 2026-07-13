@@ -1,3 +1,5 @@
+# nub (https://nubjs.com) is the installer and script runner; it reads/writes the
+# existing pnpm-lock.yaml, so nothing migrates. build.rs invokes it for setup-ui.
 [tools]
 node = "22"
-pnpm = "10"
+"npm:@nubjs/nub" = "0.4.11"
