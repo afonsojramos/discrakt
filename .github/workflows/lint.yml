@@ -24,7 +24,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Set up toolchain via mise (node, nub)
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v4.2.3
 
       - name: Run clippy
         run: cargo clippy --all-features --all-targets -- -D warnings
