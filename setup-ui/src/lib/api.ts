@@ -74,3 +74,13 @@ export async function getStatus(): Promise<SetupStatus> {
   const response = await fetch("/status");
   return (await response.json()) as SetupStatus;
 }
+
+/** Ends setup so Discrakt can start. */
+export function finishSetup(): Promise<unknown> {
+  return postJson("/finish", {});
+}
+
+/** Keeps the setup server alive so another source can be connected. */
+export function continueSetup(): Promise<unknown> {
+  return postJson("/continue", {});
+}
