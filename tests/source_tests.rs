@@ -8,8 +8,10 @@ mod common;
 
 use discrakt::source::plex::{PlexConfig, PlexSource};
 use discrakt::source::trakt::TraktSource;
-use discrakt::source::{MediaKind, Source};
+use discrakt::source::{first_active, MediaKind, Source, Watching};
 use discrakt::trakt::{Trakt, TraktConfig};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 fn trakt_source(server_url: String) -> TraktSource {
     let trakt = Trakt::with_config(TraktConfig {
@@ -820,4 +822,168 @@ fn test_jellyfin_source_episode_without_series_tmdb_falls_back_to_jellyfin_title
     assert_eq!(result.episode_title.as_deref(), Some("Felina"));
     assert_eq!(result.ids.tmdb, None);
     assert_eq!(result.poster_url, None);
+}
+
+// Multi-source selection: `first_active` polls in configured order and the
+// first source reporting activity wins, so a dual Plex/Jellyfin setup shows
+// whichever one is streaming.
+
+/// A `Source` that reports a fixed result and counts how often it was polled.
+struct StubSource {
+    watching: Option<Watching>,
+    polls: Arc<AtomicUsize>,
+}
+
+impl StubSource {
+    fn new(watching: Option<Watching>) -> (Self, Arc<AtomicUsize>) {
+        let polls = Arc::new(AtomicUsize::new(0));
+        (
+            StubSource {
+                watching,
+                polls: Arc::clone(&polls),
+            },
+            polls,
+        )
+    }
+}
+
+impl Source for StubSource {
+    fn get_watching(&mut self) -> Option<Watching> {
+        self.polls.fetch_add(1, Ordering::Relaxed);
+        self.watching.clone()
+    }
+}
+
+#[test]
+fn test_first_active_prefers_the_earlier_source_and_skips_the_rest() {
+    let (first, first_polls) = StubSource::new(Some(common::watching::movie_watching()));
+    let (second, second_polls) = StubSource::new(Some(common::watching::episode_watching()));
+    let mut sources: Vec<Box<dyn Source>> = vec![Box::new(first), Box::new(second)];
+
+    let (index, watching) = first_active(&mut sources).expect("first source is playing");
+
+    assert_eq!(index, 0);
+    assert_eq!(watching.title, "Inception");
+    assert_eq!(first_polls.load(Ordering::Relaxed), 1);
+    // The winner short-circuits, so the later source is never contacted.
+    assert_eq!(second_polls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn test_first_active_falls_through_to_a_later_source() {
+    let (first, first_polls) = StubSource::new(None);
+    let (second, second_polls) = StubSource::new(Some(common::watching::episode_watching()));
+    let mut sources: Vec<Box<dyn Source>> = vec![Box::new(first), Box::new(second)];
+
+    let (index, watching) = first_active(&mut sources).expect("second source is playing");
+
+    assert_eq!(index, 1);
+    assert_eq!(watching.title, "Breaking Bad");
+    assert_eq!(first_polls.load(Ordering::Relaxed), 1);
+    assert_eq!(second_polls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn test_first_active_returns_none_when_no_source_is_playing() {
+    let (first, _) = StubSource::new(None);
+    let (second, second_polls) = StubSource::new(None);
+    let mut sources: Vec<Box<dyn Source>> = vec![Box::new(first), Box::new(second)];
+
+    assert!(first_active(&mut sources).is_none());
+    // Every source is tried before giving up.
+    assert_eq!(second_polls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn test_first_active_handles_a_single_source() {
+    let (only, _) = StubSource::new(Some(common::watching::movie_watching()));
+    let mut sources: Vec<Box<dyn Source>> = vec![Box::new(only)];
+
+    let (index, watching) = first_active(&mut sources).expect("the only source is playing");
+
+    assert_eq!(index, 0);
+    assert_eq!(watching.title, "Inception");
+}
+
+/// A Jellyfin movie session with no TMDB ids, so no artwork lookups are needed.
+const JELLYFIN_PLAIN_MOVIE: &str = r#"[{
+    "UserId": "u1", "UserName": "alice",
+    "NowPlayingItem": {
+        "Name": "Arrival", "Type": "Movie", "ProductionYear": 2016,
+        "RunTimeTicks": 68400000000
+    },
+    "PlayState": {"PositionTicks": 6000000000, "IsPaused": false}
+}]"#;
+
+/// A Plex movie session with no TMDB ids, so no artwork lookups are needed.
+const PLEX_PLAIN_MOVIE: &str = r#"{"MediaContainer": {"size": 1, "Metadata": [{
+    "type": "movie", "title": "Dune", "year": 2021, "ratingKey": "1",
+    "duration": 9360000, "viewOffset": 600000,
+    "User": {"title": "alice"},
+    "Player": {"state": "playing"}
+}]}}"#;
+
+#[test]
+fn test_dual_plex_and_jellyfin_falls_through_to_the_playing_server() {
+    // A real dual setup: Plex is idle, Jellyfin is streaming, so Jellyfin shows.
+    let mut plex_server = mockito::Server::new();
+    let mut jellyfin_server = mockito::Server::new();
+    let plex = plex_source(
+        plex_server.url(),
+        r#"{"MediaContainer": {"size": 0}}"#,
+        &mut plex_server,
+    );
+    let jellyfin = jellyfin_source(
+        jellyfin_server.url(),
+        JELLYFIN_PLAIN_MOVIE,
+        &mut jellyfin_server,
+    );
+    let mut sources: Vec<Box<dyn Source>> = vec![Box::new(plex), Box::new(jellyfin)];
+
+    let (index, watching) = first_active(&mut sources).expect("Jellyfin is playing");
+
+    assert_eq!(index, 1);
+    assert_eq!(watching.kind, MediaKind::Movie);
+    assert_eq!(watching.title, "Arrival");
+}
+
+#[test]
+fn test_dual_plex_and_jellyfin_prefers_plex_when_both_are_playing() {
+    // Both streaming at once: the first listed source wins and the second
+    // server is never contacted.
+    let mut plex_server = mockito::Server::new();
+    let mut jellyfin_server = mockito::Server::new();
+    // The session carries no Guid, so Plex resolves ids via a metadata lookup.
+    plex_server
+        .mock("GET", "/library/metadata/1")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"MediaContainer":{"Metadata":[{"Guid":[]}]}}"#)
+        .create();
+    let plex = plex_source(plex_server.url(), PLEX_PLAIN_MOVIE, &mut plex_server);
+    let jellyfin_sessions = jellyfin_server
+        .mock("GET", "/Sessions")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(JELLYFIN_PLAIN_MOVIE)
+        .expect(0)
+        .create();
+    let jellyfin = JellyfinSource::new(JellyfinConfig {
+        server_url: jellyfin_server.url(),
+        access_token: "tok".to_string(),
+        device_id: "dev".to_string(),
+        user_id: "u1".to_string(),
+        username: String::new(),
+        tmdb_token: "test_tmdb_token".to_string(),
+        tmdb_base_url: Some(jellyfin_server.url()),
+        language: None,
+    });
+    let mut sources: Vec<Box<dyn Source>> = vec![Box::new(plex), Box::new(jellyfin)];
+
+    let (index, watching) = first_active(&mut sources).expect("Plex is playing");
+
+    assert_eq!(index, 0);
+    assert_eq!(watching.title, "Dune");
+    jellyfin_sessions.assert();
 }

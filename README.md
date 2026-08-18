@@ -32,6 +32,7 @@ Either way, movie and show artwork plus localized titles are fetched from TMDB.
 ## Features
 
 - Choose your source: **Trakt** (any app that scrobbles to it), or a direct **Plex** or **Jellyfin** server connection
+  - _Several sources can be active at once for dual setups, whichever one is playing gets shown._
 - 🌐 **Multilingual support** (Automatic system detection & Tray menu selection)
   - _Localized titles for movies and episodes are fetched via TMDB._
 - Separate Discord Rich Presence apps for Movies and TV Shows
@@ -50,6 +51,7 @@ Either way, movie and show artwork plus localized titles are fetched from TMDB.
    - **Trakt**: click **Login with Trakt** and approve in your browser. (Advanced: use a public Trakt profile by username, no login.)
    - **Plex**: click **Login with Plex** and approve. (Advanced: enter a server URL + token manually.)
    - **Jellyfin**: enter your server URL and click **Login with Jellyfin**, then enter the shown code in Jellyfin's **Quick Connect**. (Advanced: use an API key.)
+4. Running a dual setup? Click **Add another source** on the success screen and connect the second one. Discrakt then shows whichever source is playing, preferring the one you connected first.
 
 _Note: Discord needs to be running on the same machine as Discrakt._
 
@@ -95,6 +97,25 @@ username = your-jellyfin-username
 ```
 
 `accessToken` can be an API key (Dashboard → API Keys) or a token from Quick Connect. When `source` is omitted, Discrakt prefers Trakt, then Plex, then Jellyfin, based on what's configured.
+
+**Using several sources at once**: the setup wizard writes this for you via **Add another source**, but `source` also accepts a comma-separated list directly, so a dual setup can show your activity whichever server you stream from:
+
+```ini
+[Discrakt]
+source = plex, jellyfin
+
+[Plex]
+serverUrl = http://192.168.1.10:32400
+token = your-x-plex-token
+
+[Jellyfin]
+serverUrl = http://192.168.1.10:8096
+accessToken = your-jellyfin-api-key
+```
+
+Sources are polled in the order listed and the first one playing something wins, so if both are streaming at the same time, Plex is shown in the example above. Polling stops at the first hit, meaning later sources are only contacted when the earlier ones are idle.
+
+Only list sources you have actually configured: an unreachable or unconfigured server still gets polled (and retried) on every cycle, which delays the sources behind it. Listing `trakt` alongside `plex` or `jellyfin` is usually not what you want either, since those servers typically scrobble to Trakt already.
 
 </details>
 

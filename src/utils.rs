@@ -175,8 +175,9 @@ pub enum SourceKind {
 }
 
 pub struct Env {
-    /// The selected tracking source.
-    pub source: SourceKind,
+    /// The selected tracking sources, in priority order. The first one
+    /// reporting activity is the one shown on Discord.
+    pub sources: Vec<SourceKind>,
     pub trakt_username: String,
     pub trakt_client_id: String,
     pub trakt_oauth_enabled: bool,
@@ -664,28 +665,68 @@ fn jellyfin_configured(config: &Ini) -> bool {
             .is_some_and(|s| !s.is_empty())
 }
 
-/// Determines the active source, honoring an explicit `[Discrakt] source`
-/// override and otherwise falling back to whichever source is configured.
-fn determine_source(
+/// Parses the `[Discrakt] source` value into an ordered, de-duplicated list.
+///
+/// The value is a comma-separated list (`source = plex, jellyfin`); a single
+/// name is just a one-element list. Unrecognized names are ignored, so a value
+/// that names nothing valid yields an empty list.
+fn parse_source_list(value: &str) -> Vec<SourceKind> {
+    let mut sources = Vec::new();
+
+    for entry in value.split(',') {
+        let kind = match entry.trim().to_lowercase().as_str() {
+            "plex" => SourceKind::Plex,
+            "jellyfin" => SourceKind::Jellyfin,
+            "trakt" => SourceKind::Trakt,
+            "" => continue,
+            other => {
+                tracing::warn!("Ignoring unknown source '{}' in [Discrakt] source", other);
+                continue;
+            }
+        };
+
+        if !sources.contains(&kind) {
+            sources.push(kind);
+        }
+    }
+
+    sources
+}
+
+/// Determines the active sources in priority order, honoring an explicit
+/// `[Discrakt] source` override and otherwise falling back to whichever source
+/// is configured.
+///
+/// An explicit list is taken at face value, including sources that have no
+/// credentials yet, so an intentional choice is never silently overridden.
+/// Without a usable explicit value, exactly one source is auto-detected.
+fn determine_sources(
     config: &Ini,
     trakt_configured: bool,
     plex_configured: bool,
     jellyfin_configured: bool,
-) -> SourceKind {
-    match config
+) -> Vec<SourceKind> {
+    let explicit = config
         .get("Discrakt", "source")
-        .map(|s| s.trim().to_lowercase())
-        .as_deref()
-    {
-        Some("plex") => SourceKind::Plex,
-        Some("jellyfin") => SourceKind::Jellyfin,
-        Some("trakt") => SourceKind::Trakt,
-        // No explicit choice: prefer Trakt, then Plex, then Jellyfin.
-        _ if trakt_configured => SourceKind::Trakt,
-        _ if plex_configured => SourceKind::Plex,
-        _ if jellyfin_configured => SourceKind::Jellyfin,
-        _ => SourceKind::Trakt,
+        .map(|value| parse_source_list(&value))
+        .unwrap_or_default();
+
+    if !explicit.is_empty() {
+        return explicit;
     }
+
+    // No explicit choice: prefer Trakt, then Plex, then Jellyfin.
+    let detected = if trakt_configured {
+        SourceKind::Trakt
+    } else if plex_configured {
+        SourceKind::Plex
+    } else if jellyfin_configured {
+        SourceKind::Jellyfin
+    } else {
+        SourceKind::Trakt
+    };
+
+    vec![detected]
 }
 
 /// Load configuration from the credentials file.
@@ -752,7 +793,7 @@ pub fn load_config() -> Result<Env, String> {
     let trakt_has_oauth = config
         .get("Trakt API", "OAuthAccessToken")
         .is_some_and(|s| !s.is_empty());
-    let source = determine_source(
+    let sources = determine_sources(
         &config,
         !trakt_username.is_empty() || trakt_has_oauth,
         !plex_server_url.is_empty() && !plex_token.is_empty(),
@@ -760,7 +801,7 @@ pub fn load_config() -> Result<Env, String> {
     );
 
     Ok(Env {
-        source,
+        sources,
         trakt_username,
         trakt_client_id,
         trakt_oauth_enabled: config
@@ -945,7 +986,7 @@ pub fn save_language_preference(language: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{determine_source, read_plex_config, SourceKind};
+    use super::{determine_sources, read_plex_config, SourceKind};
     use configparser::ini::Ini;
 
     fn parse(contents: &str) -> Ini {
@@ -955,51 +996,117 @@ mod tests {
     }
 
     #[test]
-    fn determine_source_defaults_to_trakt() {
+    fn determine_sources_defaults_to_trakt() {
         let config = parse("[Trakt API]\ntraktUser=alice\n");
         assert_eq!(
-            determine_source(&config, true, false, false),
-            SourceKind::Trakt
+            determine_sources(&config, true, false, false),
+            vec![SourceKind::Trakt]
         );
     }
 
     #[test]
-    fn determine_source_uses_plex_when_only_plex_configured() {
+    fn determine_sources_uses_plex_when_only_plex_configured() {
         let config = parse("[Plex]\nserverUrl=http://host:32400\ntoken=abc\n");
         assert_eq!(
-            determine_source(&config, false, true, false),
-            SourceKind::Plex
+            determine_sources(&config, false, true, false),
+            vec![SourceKind::Plex]
         );
     }
 
     #[test]
-    fn determine_source_uses_jellyfin_when_only_jellyfin_configured() {
+    fn determine_sources_uses_jellyfin_when_only_jellyfin_configured() {
         let config = parse("[Jellyfin]\nserverUrl=http://host:8096\naccessToken=abc\n");
         assert_eq!(
-            determine_source(&config, false, false, true),
-            SourceKind::Jellyfin
+            determine_sources(&config, false, false, true),
+            vec![SourceKind::Jellyfin]
         );
     }
 
     #[test]
-    fn determine_source_honors_explicit_override() {
+    fn determine_sources_auto_detects_only_one_source() {
+        let config = parse("[Trakt API]\ntraktUser=alice\n[Plex]\nserverUrl=http://h\ntoken=t\n");
+        assert_eq!(
+            determine_sources(&config, true, true, true),
+            vec![SourceKind::Trakt]
+        );
+    }
+
+    #[test]
+    fn determine_sources_honors_explicit_override() {
         let config = parse("[Discrakt]\nsource=plex\n[Trakt API]\ntraktUser=alice\n");
         // Both configured, but the explicit override wins.
         assert_eq!(
-            determine_source(&config, true, true, false),
-            SourceKind::Plex
+            determine_sources(&config, true, true, false),
+            vec![SourceKind::Plex]
         );
 
         let config = parse("[Discrakt]\nsource=jellyfin\n[Trakt API]\ntraktUser=alice\n");
         assert_eq!(
-            determine_source(&config, true, false, true),
-            SourceKind::Jellyfin
+            determine_sources(&config, true, false, true),
+            vec![SourceKind::Jellyfin]
         );
 
         let config = parse("[Discrakt]\nsource=trakt\n[Plex]\nserverUrl=http://h\ntoken=t\n");
         assert_eq!(
-            determine_source(&config, false, true, false),
-            SourceKind::Trakt
+            determine_sources(&config, false, true, false),
+            vec![SourceKind::Trakt]
+        );
+    }
+
+    #[test]
+    fn determine_sources_reads_a_comma_separated_list_in_order() {
+        let config = parse("[Discrakt]\nsource=plex, jellyfin\n");
+        assert_eq!(
+            determine_sources(&config, false, true, true),
+            vec![SourceKind::Plex, SourceKind::Jellyfin]
+        );
+
+        let config = parse("[Discrakt]\nsource=jellyfin,plex\n");
+        assert_eq!(
+            determine_sources(&config, false, true, true),
+            vec![SourceKind::Jellyfin, SourceKind::Plex]
+        );
+    }
+
+    #[test]
+    fn determine_sources_normalizes_case_whitespace_and_duplicates() {
+        let config = parse("[Discrakt]\nsource=  PLEX , plex,\tJellyFin ,,\n");
+        assert_eq!(
+            determine_sources(&config, false, true, true),
+            vec![SourceKind::Plex, SourceKind::Jellyfin]
+        );
+    }
+
+    #[test]
+    fn determine_sources_skips_unknown_entries_in_a_list() {
+        let config = parse("[Discrakt]\nsource=emby, jellyfin\n");
+        assert_eq!(
+            determine_sources(&config, false, false, true),
+            vec![SourceKind::Jellyfin]
+        );
+    }
+
+    #[test]
+    fn determine_sources_falls_back_when_no_entry_is_recognized() {
+        let config = parse("[Discrakt]\nsource=emby\n[Plex]\nserverUrl=http://h\ntoken=t\n");
+        assert_eq!(
+            determine_sources(&config, false, true, false),
+            vec![SourceKind::Plex]
+        );
+
+        let config = parse("[Discrakt]\nsource=\n[Plex]\nserverUrl=http://h\ntoken=t\n");
+        assert_eq!(
+            determine_sources(&config, false, true, false),
+            vec![SourceKind::Plex]
+        );
+    }
+
+    #[test]
+    fn determine_sources_keeps_explicit_entries_that_are_not_configured_yet() {
+        let config = parse("[Discrakt]\nsource=plex, jellyfin\n");
+        assert_eq!(
+            determine_sources(&config, false, true, false),
+            vec![SourceKind::Plex, SourceKind::Jellyfin]
         );
     }
 

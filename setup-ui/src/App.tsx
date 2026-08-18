@@ -1,5 +1,5 @@
 import { type ReactNode, type SyntheticEvent, useEffect, useRef, useState } from "react";
-import { ChevronDown, ExternalLink, Loader2 } from "lucide-react";
+import { Check, ChevronDown, ExternalLink, Loader2 } from "lucide-react";
 
 import { JellyfinIcon, PlexIcon, TraktIcon } from "@/components/brand-icons";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  continueSetup,
+  finishSetup,
   getStatus,
   startJellyfinLogin,
   startPlexLogin,
@@ -18,7 +20,12 @@ import {
   submitTraktPublic,
 } from "@/lib/api";
 
+/** A source the wizard can connect, as shown to the user. */
+type SourceName = "Trakt" | "Plex" | "Jellyfin";
+
 type AuthInfo = {
+  /** The source this authorization belongs to. */
+  source: SourceName;
   /** The URL the user opens to authorize. */
   link: string;
   /** A short code to display (Trakt device code, Jellyfin Quick Connect). */
@@ -37,6 +44,12 @@ type Screen = { name: "setup" } | { name: "auth"; info: AuthInfo } | { name: "su
 export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "setup" });
   const [error, setError] = useState<string | null>(null);
+  const [connected, setConnected] = useState<SourceName[]>([]);
+
+  const markConnected = (source: SourceName) => {
+    setConnected((current) => (current.includes(source) ? current : [...current, source]));
+    setScreen({ name: "success" });
+  };
 
   // While waiting for authorization, poll the server for completion.
   useEffect(() => {
@@ -46,7 +59,7 @@ export function App() {
       try {
         const status = await getStatus();
         if (cancelled) return;
-        if (status.status === "success") setScreen({ name: "success" });
+        if (status.status === "success") markConnected(screen.info.source);
         else if (status.status === "denied")
           setError("Authorization was denied. Restart Discrakt to try again.");
         else if (status.status === "expired")
@@ -85,15 +98,24 @@ export function App() {
             <SetupScreen
               error={error}
               setError={setError}
+              connected={connected}
               onAuth={(info) => {
                 setError(null);
                 setScreen({ name: "auth", info });
               }}
-              onDone={() => setScreen({ name: "success" })}
+              onDone={markConnected}
             />
           )}
           {screen.name === "auth" && <AuthScreen info={screen.info} error={error} />}
-          {screen.name === "success" && <SuccessScreen />}
+          {screen.name === "success" && (
+            <SuccessScreen
+              connected={connected}
+              onAddAnother={() => {
+                setError(null);
+                setScreen({ name: "setup" });
+              }}
+            />
+          )}
         </CardContent>
       </Card>
     </div>
@@ -112,23 +134,35 @@ type SetupProps = {
   error: string | null;
   setError: (message: string | null) => void;
   onAuth: (info: AuthInfo) => void;
-  onDone: () => void;
+  onDone: (source: SourceName) => void;
 };
 
-function SetupScreen({ error, setError, onAuth, onDone }: SetupProps) {
+type SetupScreenProps = SetupProps & { connected: SourceName[] };
+
+function SetupScreen({ error, setError, connected, onAuth, onDone }: SetupScreenProps) {
+  // Land on the first source that is not connected yet, so returning here to
+  // add a second source does not reopen the one just finished.
+  const firstUnconnected =
+    (["trakt", "plex", "jellyfin"] as const).find((tab) => !connected.includes(labelOf(tab))) ??
+    "trakt";
+
   return (
-    <Tabs defaultValue="trakt" onValueChange={() => setError(null)} className="gap-5">
+    <Tabs defaultValue={firstUnconnected} onValueChange={() => setError(null)} className="gap-5">
       <TabsList className="w-full">
         <TabsTrigger value="trakt">
-          <TraktIcon />
+          {connected.includes("Trakt") ? <Check className="text-emerald-500" /> : <TraktIcon />}
           Trakt
         </TabsTrigger>
         <TabsTrigger value="plex">
-          <PlexIcon />
+          {connected.includes("Plex") ? <Check className="text-emerald-500" /> : <PlexIcon />}
           Plex
         </TabsTrigger>
         <TabsTrigger value="jellyfin">
-          <JellyfinIcon />
+          {connected.includes("Jellyfin") ? (
+            <Check className="text-emerald-500" />
+          ) : (
+            <JellyfinIcon />
+          )}
           Jellyfin
         </TabsTrigger>
       </TabsList>
@@ -146,6 +180,11 @@ function SetupScreen({ error, setError, onAuth, onDone }: SetupProps) {
       </TabsContent>
     </Tabs>
   );
+}
+
+function labelOf(tab: "trakt" | "plex" | "jellyfin"): SourceName {
+  if (tab === "trakt") return "Trakt";
+  return tab === "plex" ? "Plex" : "Jellyfin";
 }
 
 function Advanced({ label, children }: { label: string; children: ReactNode }) {
@@ -171,6 +210,7 @@ function TraktForm({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
       const result = await submitTrakt();
       if (result.user_code && result.verification_url) {
         onAuth({
+          source: "Trakt",
           link: `${result.verification_url}?code=${encodeURIComponent(result.user_code)}`,
           code: result.user_code,
           buttonLabel: "Open Trakt & Authorize",
@@ -178,7 +218,7 @@ function TraktForm({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
           intervalSeconds: result.interval ?? 5,
         });
       } else {
-        onDone();
+        onDone("Trakt");
       }
     } catch (err) {
       setError(messageOf(err));
@@ -196,7 +236,7 @@ function TraktForm({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
     setError(null);
     try {
       await submitTraktPublic(username.trim());
-      onDone();
+      onDone("Trakt");
     } catch (err) {
       setError(messageOf(err));
       setBusy(false);
@@ -250,6 +290,7 @@ function PlexPane({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
       // Best-effort auto-open; the link is shown regardless of popup blocking.
       window.open(data.authUrl, "_blank", "noopener");
       onAuth({
+        source: "Plex",
         link: data.authUrl,
         buttonLabel: "Open Plex & Authorize",
         expiresInMinutes: Math.floor((data.expiresIn ?? 1800) / 60),
@@ -271,7 +312,7 @@ function PlexPane({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
     setError(null);
     try {
       await submitPlex(form);
-      onDone();
+      onDone("Plex");
     } catch (err) {
       setError(messageOf(err));
       setBusy(false);
@@ -352,6 +393,7 @@ function JellyfinPane({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
       const data = await startJellyfinLogin(serverUrl.trim());
       const base = serverUrl.trim().replace(/\/$/, "");
       onAuth({
+        source: "Jellyfin",
         code: data.code,
         // The Quick Connect page prefills its input from `?code=`, so the user
         // only has to click Authorize (the code below is a manual fallback).
@@ -377,7 +419,7 @@ function JellyfinPane({ setError, onAuth, onDone }: Omit<SetupProps, "error">) {
     setError(null);
     try {
       await submitJellyfin(manual);
-      onDone();
+      onDone("Jellyfin");
     } catch (err) {
       setError(messageOf(err));
       setBusy(false);
@@ -476,11 +518,21 @@ function AuthScreen({ info, error }: { info: AuthInfo; error: string | null }) {
   );
 }
 
-function SuccessScreen() {
-  const [seconds, setSeconds] = useState(5);
+const FINISH_COUNTDOWN_SECONDS = 10;
+
+function SuccessScreen({
+  connected,
+  onAddAnother,
+}: {
+  connected: SourceName[];
+  onAddAnother: () => void;
+}) {
+  const [seconds, setSeconds] = useState(FINISH_COUNTDOWN_SECONDS);
   // Only count down while the tab is in focus, so a user who authorized in
   // another tab actually sees the success state before this one closes.
   const [visible, setVisible] = useState(() => document.visibilityState === "visible");
+  const [staying, setStaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const onVisibility = () => setVisible(document.visibilityState === "visible");
@@ -488,31 +540,94 @@ function SuccessScreen() {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
-  const closed = useRef(false);
+  const finished = useRef(false);
+  const finish = () => {
+    // The server stops listening right after this, so fire it once and ignore
+    // the inevitable connection error from the socket closing.
+    if (finished.current) return;
+    finished.current = true;
+    void finishSetup().catch(() => {});
+    window.close();
+  };
+
   useEffect(() => {
+    if (staying) return;
     if (seconds <= 0) {
-      // window.close() is a no-op for tabs the browser opened (not script);
-      // attempt it once rather than on every later visibility toggle.
-      if (!closed.current) {
-        closed.current = true;
-        window.close();
-      }
+      finish();
       return;
     }
     if (!visible) return;
     const id = setTimeout(() => setSeconds((s) => s - 1), 1000);
     return () => clearTimeout(id);
-  }, [seconds, visible]);
+  }, [seconds, visible, staying]);
+
+  async function handleAddAnother() {
+    // Stop the countdown first: the server must stay up for the next flow.
+    setStaying(true);
+    try {
+      await continueSetup();
+      onAddAnother();
+    } catch {
+      // Setup already ended; nothing more can be connected in this run.
+      setError("Setup has already finished. Restart Discrakt to add another source.");
+      setStaying(false);
+    }
+  }
+
+  const remaining = (["Trakt", "Plex", "Jellyfin"] as const).filter(
+    (source) => !connected.includes(source),
+  );
 
   return (
-    <div className="flex flex-col items-center gap-3 text-center">
-      <h2 className="text-xl font-semibold text-emerald-500">Setup complete!</h2>
-      <p className="text-sm text-muted-foreground">Your account has been connected.</p>
+    <div className="flex flex-col items-center gap-4 text-center">
+      <h2 className="text-xl font-semibold text-emerald-500">
+        {connected.length > 1 ? "Sources connected!" : "Setup complete!"}
+      </h2>
+
+      <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+        {connected.map((source) => (
+          <li key={source} className="flex items-center justify-center gap-2">
+            <Check className="size-4 text-emerald-500" />
+            {source} connected
+          </li>
+        ))}
+      </ul>
+
+      {remaining.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Streaming from more than one? Add {formatList(remaining)} too and Discrakt shows whichever
+          one is playing.
+        </p>
+      )}
+
+      {error && <ErrorBox message={error} />}
+
+      <div className="flex w-full flex-col gap-2">
+        {remaining.length > 0 && (
+          <Button
+            variant="secondary"
+            onClick={handleAddAnother}
+            disabled={staying || error !== null}
+          >
+            {staying && <Loader2 className="animate-spin" />}
+            Add another source
+          </Button>
+        )}
+        <Button onClick={finish}>Start Discrakt</Button>
+      </div>
+
       <p className="text-xs text-muted-foreground">
-        Discrakt is now starting. This tab will close in {seconds} second{seconds === 1 ? "" : "s"}.
+        {staying
+          ? "Pick another source above."
+          : `Starting automatically in ${seconds} second${seconds === 1 ? "" : "s"}.`}
       </p>
     </div>
   );
+}
+
+function formatList(items: readonly string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
 }
 
 function messageOf(err: unknown): string {

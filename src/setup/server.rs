@@ -122,9 +122,13 @@ enum OAuthState {
     Error(String),
 }
 
-/// Grace period after OAuth success to allow browser to poll and see the success status.
-/// This should be longer than the polling interval (5 seconds) to ensure at least one poll.
-const SUCCESS_GRACE_PERIOD: Duration = Duration::from_secs(8);
+/// How long to keep the setup server alive after a source connects, when the
+/// browser never confirms it is done.
+///
+/// The wizard normally ends setup explicitly (`POST /finish`) once the user has
+/// connected everything they want, so this only applies when the browser is
+/// closed at the success screen. It must outlast the wizard's own countdown.
+const SUCCESS_GRACE_PERIOD: Duration = Duration::from_secs(25);
 
 /// Response for device code info sent to the browser.
 #[derive(Serialize, Clone)]
@@ -152,6 +156,49 @@ fn config_dir_path() -> Result<PathBuf, String> {
     dirs::config_dir()
         .map(|p| p.join("discrakt"))
         .ok_or_else(|| "Could not determine config directory".to_string())
+}
+
+/// Adds `kind` to the `[Discrakt] source` list, keeping any sources already
+/// connected in an earlier step of the wizard.
+///
+/// The list is ordered, and earlier entries win when several sources are
+/// playing at once, so a source keeps the position it was first connected in.
+fn append_source(config: &mut Ini, kind: &str) {
+    let mut sources: Vec<String> = config
+        .get("Discrakt", "source")
+        .unwrap_or_default()
+        .split(',')
+        .map(|entry| entry.trim().to_lowercase())
+        .filter(|entry| !entry.is_empty())
+        .collect();
+
+    if !sources.iter().any(|existing| existing == kind) {
+        sources.push(kind.to_string());
+    }
+
+    config.setstr("Discrakt", "source", Some(&sources.join(", ")));
+}
+
+/// Adds `kind` to the `[Discrakt] source` list of the on-disk config.
+///
+/// Used by the flows that finish asynchronously (Trakt OAuth), where the
+/// credentials were written before the user finished authorizing.
+fn append_source_to_config_file(kind: &str) -> Result<(), String> {
+    let config_path = config_dir_path()?.join("credentials.ini");
+
+    let mut config = Ini::new_cs();
+    if config_path.exists() {
+        let _ = config.load(&config_path);
+    }
+
+    append_source(&mut config, kind);
+
+    config
+        .write(&config_path)
+        .map_err(|e| format!("Failed to write config file: {e}"))?;
+
+    set_restrictive_permissions(&config_path);
+    Ok(())
 }
 
 /// Write credentials to the config file.
@@ -224,6 +271,7 @@ fn write_public_credentials(username: &str) -> Result<PathBuf, String> {
         let _ = config.load(&config_path);
     }
 
+    append_source(&mut config, "trakt");
     config.setstr("Trakt API", "traktUser", Some(username.trim()));
     config.setstr("Trakt API", "enabledOAuth", Some("false"));
     // Clear any OAuth token so the public-username endpoint is used.
@@ -261,7 +309,7 @@ fn write_jellyfin_credentials(
         let _ = config.load(&config_path);
     }
 
-    config.setstr("Discrakt", "source", Some("jellyfin"));
+    append_source(&mut config, "jellyfin");
     config.setstr("Jellyfin", "serverUrl", Some(server_url.trim()));
     config.setstr("Jellyfin", "accessToken", Some(access_token.trim()));
     config.setstr("Jellyfin", "deviceId", Some(device_id));
@@ -294,7 +342,7 @@ fn write_plex_credentials(creds: &PlexSubmitted) -> Result<PathBuf, String> {
         let _ = config.load(&config_path);
     }
 
-    config.setstr("Discrakt", "source", Some("plex"));
+    append_source(&mut config, "plex");
     config.setstr("Plex", "serverUrl", Some(creds.server_url.trim()));
     config.setstr("Plex", "token", Some(creds.token.trim()));
     config.setstr("Plex", "username", Some(creds.username.trim()));
@@ -414,6 +462,9 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 
     // Flag to signal when setup is complete
     let setup_complete = Arc::new(AtomicBool::new(false));
+    // Set when the wizard confirms the user has connected everything they want,
+    // ending setup without waiting out the grace period.
+    let finish_now = Arc::new(AtomicBool::new(false));
     let result: Arc<Mutex<Option<SetupResult>>> = Arc::new(Mutex::new(None));
     let oauth_state: Arc<Mutex<OAuthState>> = Arc::new(Mutex::new(OAuthState::Idle));
     // Track if a polling thread is already running to prevent duplicate spawns
@@ -440,8 +491,15 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 
     // Handle requests until setup is complete and grace period has passed.
     loop {
-        // Check if setup is complete and grace period has elapsed
-        // This allows the browser to poll /status and see the success state
+        // The wizard confirmed there is nothing left to connect.
+        if finish_now.load(Ordering::SeqCst) {
+            break;
+        }
+
+        // Otherwise fall back to ending setup on our own, which covers the
+        // browser being closed at the success screen. Connecting a further
+        // source resets the state to pending, so this only fires once the user
+        // has stopped making progress.
         if setup_complete.load(Ordering::SeqCst) {
             if let Ok(state) = oauth_state.lock() {
                 if let OAuthState::Success(success_time) = *state {
@@ -954,6 +1012,44 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                 }
             }
 
+            ("POST", "/finish") => {
+                // Respond before the loop notices the flag, so the wizard sees
+                // the confirmation rather than a dropped connection.
+                let response = Response::from_string(r#"{"status":"ok"}"#).with_header(
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                        .unwrap(),
+                );
+                let _ = request.respond(response);
+
+                tracing::info!("Setup finished by the wizard");
+                setup_complete.store(true, Ordering::SeqCst);
+                finish_now.store(true, Ordering::SeqCst);
+            }
+
+            ("POST", "/continue") => {
+                // The user wants to connect another source. Clearing the success
+                // state stops the grace-period shutdown and lets the wizard run
+                // a second flow against a server that is still listening.
+                if let Ok(mut state) = oauth_state.lock() {
+                    *state = OAuthState::Idle;
+                }
+                setup_complete.store(false, Ordering::SeqCst);
+                polling_started.store(false, Ordering::SeqCst);
+                if let Ok(mut code) = active_device_code.lock() {
+                    *code = None;
+                }
+                if let Ok(mut code) = active_jellyfin_code.lock() {
+                    *code = None;
+                }
+
+                tracing::info!("Wizard is connecting an additional source");
+                let response = Response::from_string(r#"{"status":"ok"}"#).with_header(
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                        .unwrap(),
+                );
+                let _ = request.respond(response);
+            }
+
             ("GET", "/status") => {
                 // Return the current OAuth status
                 // On mutex poisoning, reset to Idle state for safety
@@ -1222,6 +1318,13 @@ fn poll_oauth_in_background(
                 // Save the tokens to config
                 save_oauth_tokens(&token);
 
+                // Registered only now: the credentials were written when the
+                // flow started, so an abandoned authorization must not leave
+                // Trakt in the source list.
+                if let Err(e) = append_source_to_config_file("trakt") {
+                    tracing::error!("Failed to register Trakt as a source: {}", e);
+                }
+
                 // Update state to success with timestamp so the server knows when
                 // to shut down (after grace period for browser to poll)
                 if let Ok(mut state) = oauth_state.lock() {
@@ -1297,6 +1400,63 @@ fn poll_oauth_in_background(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse_ini(contents: &str) -> Ini {
+        let mut config = Ini::new_cs();
+        config.read(contents.to_string()).expect("valid ini");
+        config
+    }
+
+    #[test]
+    fn test_append_source_sets_the_first_source() {
+        let mut config = parse_ini("");
+        append_source(&mut config, "plex");
+        assert_eq!(config.get("Discrakt", "source").as_deref(), Some("plex"));
+    }
+
+    #[test]
+    fn test_append_source_keeps_a_previously_connected_source() {
+        // Connecting a second source in the wizard must not drop the first.
+        let mut config = parse_ini("[Discrakt]\nsource=plex\n");
+        append_source(&mut config, "jellyfin");
+        assert_eq!(
+            config.get("Discrakt", "source").as_deref(),
+            Some("plex, jellyfin")
+        );
+    }
+
+    #[test]
+    fn test_append_source_preserves_connection_order() {
+        let mut config = parse_ini("");
+        append_source(&mut config, "jellyfin");
+        append_source(&mut config, "trakt");
+        append_source(&mut config, "plex");
+        assert_eq!(
+            config.get("Discrakt", "source").as_deref(),
+            Some("jellyfin, trakt, plex")
+        );
+    }
+
+    #[test]
+    fn test_append_source_is_idempotent() {
+        // Reconnecting a source (e.g. re-running its login) must not list it twice.
+        let mut config = parse_ini("[Discrakt]\nsource=plex, jellyfin\n");
+        append_source(&mut config, "plex");
+        assert_eq!(
+            config.get("Discrakt", "source").as_deref(),
+            Some("plex, jellyfin")
+        );
+    }
+
+    #[test]
+    fn test_append_source_normalizes_an_existing_list() {
+        let mut config = parse_ini("[Discrakt]\nsource=  PLEX ,, jellyfin \n");
+        append_source(&mut config, "trakt");
+        assert_eq!(
+            config.get("Discrakt", "source").as_deref(),
+            Some("plex, jellyfin, trakt")
+        );
+    }
 
     #[test]
     fn test_parse_json_body() {
