@@ -2,4 +2,4 @@
 # existing pnpm-lock.yaml, so nothing migrates. build.rs invokes it for setup-ui.
 [tools]
 node = "22"
-"npm:@nubjs/nub" = "0.4.11"
+"npm:@nubjs/nub" = "latest"
