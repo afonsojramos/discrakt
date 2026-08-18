@@ -9,6 +9,7 @@ use discrakt::{
     autostart,
     discord::Discord,
     source::{
+        self,
         jellyfin::{JellyfinConfig, JellyfinSource},
         plex::{PlexConfig, PlexSource},
         trakt::TraktSource,
@@ -364,7 +365,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         e
     })?;
     // OAuth applies to the Trakt source only.
-    if cfg.source == SourceKind::Trakt {
+    if cfg.sources.contains(&SourceKind::Trakt) {
         cfg.check_oauth();
     }
 
@@ -374,7 +375,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_state_clone = Arc::clone(&app_state);
     let should_quit_clone = Arc::clone(&should_quit);
 
-    let source_kind = cfg.source;
+    let source_kinds = cfg.sources.clone();
     let trakt_client_id = cfg.trakt_client_id.clone();
     let trakt_username = cfg.trakt_username.clone();
     let trakt_access_token = cfg.trakt_access_token.clone();
@@ -392,31 +393,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Spawn background polling thread
     let polling_handle = thread::spawn(move || {
         let mut discord = Discord::new(DEFAULT_DISCORD_APP_ID.to_string());
-        let mut source: Box<dyn Source> = match source_kind {
-            SourceKind::Trakt => {
-                let trakt = Trakt::new(trakt_client_id, trakt_username, trakt_access_token);
-                Box::new(TraktSource::new(trakt, tmdb_token))
-            }
-            SourceKind::Plex => Box::new(PlexSource::new(PlexConfig {
-                server_url: plex_server_url,
-                token: plex_token,
-                username: plex_username,
-                tmdb_token,
-                tmdb_base_url: None,
-                language: None,
-            })),
-            SourceKind::Jellyfin => Box::new(JellyfinSource::new(JellyfinConfig {
-                server_url: jellyfin_server_url,
-                access_token: jellyfin_access_token,
-                device_id: jellyfin_device_id,
-                user_id: jellyfin_user_id,
-                username: jellyfin_username,
-                tmdb_token,
-                tmdb_base_url: None,
-                language: None,
-            })),
-        };
-        source.set_language(tmdb_language);
+        // Sources are polled in configured order and the first one reporting
+        // activity wins, so a dual Plex/Jellyfin setup shows whichever is
+        // playing without running two copies of Discrakt.
+        let mut sources: Vec<Box<dyn Source>> = source_kinds
+            .iter()
+            .map(|&kind| -> Box<dyn Source> {
+                match kind {
+                    SourceKind::Trakt => {
+                        let trakt = Trakt::new(
+                            trakt_client_id.clone(),
+                            trakt_username.clone(),
+                            trakt_access_token.clone(),
+                        );
+                        Box::new(TraktSource::new(trakt, tmdb_token.clone()))
+                    }
+                    SourceKind::Plex => Box::new(PlexSource::new(PlexConfig {
+                        server_url: plex_server_url.clone(),
+                        token: plex_token.clone(),
+                        username: plex_username.clone(),
+                        tmdb_token: tmdb_token.clone(),
+                        tmdb_base_url: None,
+                        language: None,
+                    })),
+                    SourceKind::Jellyfin => Box::new(JellyfinSource::new(JellyfinConfig {
+                        server_url: jellyfin_server_url.clone(),
+                        access_token: jellyfin_access_token.clone(),
+                        device_id: jellyfin_device_id.clone(),
+                        user_id: jellyfin_user_id.clone(),
+                        username: jellyfin_username.clone(),
+                        tmdb_token: tmdb_token.clone(),
+                        tmdb_base_url: None,
+                        language: None,
+                    })),
+                }
+            })
+            .collect();
+
+        tracing::info!("Polling sources in order: {:?}", source_kinds);
+
+        for source in &mut sources {
+            source.set_language(tmdb_language.clone());
+        }
 
         discord.connect();
 
@@ -445,7 +463,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             if let Some(lang) = new_lang {
-                source.set_language(lang);
+                for source in &mut sources {
+                    source.set_language(lang.clone());
+                }
             }
 
             // Check if paused from shared state
@@ -457,8 +477,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
 
-            let watching = match source.get_watching() {
-                Some(watching) => watching,
+            let watching = match source::first_active(&mut sources) {
+                Some((index, watching)) => {
+                    tracing::debug!("Reporting activity from {:?}", source_kinds[index]);
+                    watching
+                }
                 None => {
                     tracing::debug!("Nothing is being played");
                     // Update state: nothing playing
