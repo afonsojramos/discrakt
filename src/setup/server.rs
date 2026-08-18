@@ -122,9 +122,13 @@ enum OAuthState {
     Error(String),
 }
 
-/// Grace period after OAuth success to allow browser to poll and see the success status.
-/// This should be longer than the polling interval (5 seconds) to ensure at least one poll.
-const SUCCESS_GRACE_PERIOD: Duration = Duration::from_secs(8);
+/// How long to keep the setup server alive after a source connects, when the
+/// browser never confirms it is done.
+///
+/// The wizard normally ends setup explicitly (`POST /finish`) once the user has
+/// connected everything they want, so this only applies when the browser is
+/// closed at the success screen. It must outlast the wizard's own countdown.
+const SUCCESS_GRACE_PERIOD: Duration = Duration::from_secs(25);
 
 /// Response for device code info sent to the browser.
 #[derive(Serialize, Clone)]
@@ -458,6 +462,9 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 
     // Flag to signal when setup is complete
     let setup_complete = Arc::new(AtomicBool::new(false));
+    // Set when the wizard confirms the user has connected everything they want,
+    // ending setup without waiting out the grace period.
+    let finish_now = Arc::new(AtomicBool::new(false));
     let result: Arc<Mutex<Option<SetupResult>>> = Arc::new(Mutex::new(None));
     let oauth_state: Arc<Mutex<OAuthState>> = Arc::new(Mutex::new(OAuthState::Idle));
     // Track if a polling thread is already running to prevent duplicate spawns
@@ -484,8 +491,15 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
 
     // Handle requests until setup is complete and grace period has passed.
     loop {
-        // Check if setup is complete and grace period has elapsed
-        // This allows the browser to poll /status and see the success state
+        // The wizard confirmed there is nothing left to connect.
+        if finish_now.load(Ordering::SeqCst) {
+            break;
+        }
+
+        // Otherwise fall back to ending setup on our own, which covers the
+        // browser being closed at the success screen. Connecting a further
+        // source resets the state to pending, so this only fires once the user
+        // has stopped making progress.
         if setup_complete.load(Ordering::SeqCst) {
             if let Ok(state) = oauth_state.lock() {
                 if let OAuthState::Success(success_time) = *state {
@@ -996,6 +1010,44 @@ pub fn run_setup_server() -> Result<SetupResult, Box<dyn std::error::Error>> {
                         let _ = request.respond(response);
                     }
                 }
+            }
+
+            ("POST", "/finish") => {
+                // Respond before the loop notices the flag, so the wizard sees
+                // the confirmation rather than a dropped connection.
+                let response = Response::from_string(r#"{"status":"ok"}"#).with_header(
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                        .unwrap(),
+                );
+                let _ = request.respond(response);
+
+                tracing::info!("Setup finished by the wizard");
+                setup_complete.store(true, Ordering::SeqCst);
+                finish_now.store(true, Ordering::SeqCst);
+            }
+
+            ("POST", "/continue") => {
+                // The user wants to connect another source. Clearing the success
+                // state stops the grace-period shutdown and lets the wizard run
+                // a second flow against a server that is still listening.
+                if let Ok(mut state) = oauth_state.lock() {
+                    *state = OAuthState::Idle;
+                }
+                setup_complete.store(false, Ordering::SeqCst);
+                polling_started.store(false, Ordering::SeqCst);
+                if let Ok(mut code) = active_device_code.lock() {
+                    *code = None;
+                }
+                if let Ok(mut code) = active_jellyfin_code.lock() {
+                    *code = None;
+                }
+
+                tracing::info!("Wizard is connecting an additional source");
+                let response = Response::from_string(r#"{"status":"ok"}"#).with_header(
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                        .unwrap(),
+                );
+                let _ = request.respond(response);
             }
 
             ("GET", "/status") => {
