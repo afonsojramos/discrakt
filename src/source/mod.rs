@@ -60,3 +60,15 @@ pub trait Source: Send {
     /// Updates the preferred language for localized titles. No-op by default.
     fn set_language(&mut self, _language: String) {}
 }
+
+/// Polls `sources` in order and returns the first reported activity, along with
+/// the index of the source that reported it.
+///
+/// Polling stops at the first hit, so when several sources are configured the
+/// earlier ones take precedence and the later ones are not contacted at all.
+pub fn first_active(sources: &mut [Box<dyn Source>]) -> Option<(usize, Watching)> {
+    sources
+        .iter_mut()
+        .enumerate()
+        .find_map(|(index, source)| source.get_watching().map(|watching| (index, watching)))
+}
