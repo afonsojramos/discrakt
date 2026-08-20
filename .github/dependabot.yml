@@ -16,3 +16,9 @@ updates:
     directory: "/setup-ui"
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: "rust-toolchain"
+    directory: "/"
+    schedule:
+      # Check for Rust toolchain updates once a week
+      interval: "weekly"
