@@ -21,12 +21,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up toolchain via mise (node, nub, rust)
+        uses: jdx/mise-action@v4.2.5
 
-      # Cross targets must go on the rust-toolchain.toml-pinned toolchain that
-      # cargo actually uses (not the `stable` the action installs as default).
-      - name: Add cross-compile targets to the pinned toolchain
+      - name: Add cross-compile targets
         run: rustup target add aarch64-unknown-linux-gnu x86_64-unknown-linux-musl
 
       - name: Rust cache
@@ -44,9 +42,6 @@ jobs:
 
       - name: Install cargo-generate-rpm
         run: cargo install cargo-generate-rpm
-
-      - name: Set up toolchain via mise (node, nub)
-        uses: jdx/mise-action@v4.2.5
 
       - name: Build setup-ui
         shell: bash
@@ -162,8 +157,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up toolchain via mise (node, nub, rust)
+        uses: jdx/mise-action@v4.2.5
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -176,9 +171,6 @@ jobs:
         run: |
           $version = "${{ github.event.release.tag_name }}".TrimStart('v')
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
-
-      - name: Set up toolchain via mise (node, nub)
-        uses: jdx/mise-action@v4.2.5
 
       - name: Build setup-ui
         shell: bash
@@ -231,12 +223,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up toolchain via mise (node, nub, rust)
+        uses: jdx/mise-action@v4.2.5
 
-      # Cross targets must go on the rust-toolchain.toml-pinned toolchain that
-      # cargo actually uses (not the `stable` the action installs as default).
-      - name: Add cross-compile targets to the pinned toolchain
+      - name: Add cross-compile targets
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
       - name: Rust cache
@@ -248,9 +238,6 @@ jobs:
           VERSION="${{ github.event.release.tag_name }}"
           VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Set up toolchain via mise (node, nub)
-        uses: jdx/mise-action@v4.2.5
 
       - name: Build setup-ui
         shell: bash

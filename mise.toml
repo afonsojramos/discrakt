@@ -1,3 +1,8 @@
+# rust-toolchain.toml is the single source of truth for the Rust version
+# (Dependabot updates it); mise reads it as rust's idiomatic version file.
+[settings]
+idiomatic_version_file_enable_tools = ["node", "rust"]
+
 # nub (https://nubjs.com) is the installer and script runner; it reads/writes the
 # existing pnpm-lock.yaml, so nothing migrates. build.rs invokes it for setup-ui.
 [tools]

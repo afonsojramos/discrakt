@@ -13,8 +13,8 @@ jobs:
       - name: Repository Checkout
         uses: actions/checkout@v7
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up toolchain via mise (node, nub, rust)
+        uses: jdx/mise-action@v4.2.5
 
       - name: Cache APT packages
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
@@ -24,9 +24,6 @@ jobs:
 
       - name: Cache
         uses: Swatinem/rust-cache@v2
-
-      - name: Set up toolchain via mise (node, nub)
-        uses: jdx/mise-action@v4.2.5
 
       - name: Run Unit Tests
         run: |
@@ -57,8 +54,8 @@ jobs:
       - name: Repository Checkout
         uses: actions/checkout@v7
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up toolchain via mise (node, nub, rust)
+        uses: jdx/mise-action@v4.2.5
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -66,9 +63,6 @@ jobs:
 
       - name: Cache
         uses: Swatinem/rust-cache@v2
-
-      - name: Set up toolchain via mise (node, nub)
-        uses: jdx/mise-action@v4.2.5
 
       - name: Build
         env:
