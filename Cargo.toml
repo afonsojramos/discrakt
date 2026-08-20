@@ -57,7 +57,7 @@ winresource = "0.1.31"
 [dev-dependencies]
 mockito = "1.7"
 tempfile = "3.27"
-serial_test = "3.5"
+serial_test = "4.0"
 
 [profile.release]
 strip = "debuginfo"
