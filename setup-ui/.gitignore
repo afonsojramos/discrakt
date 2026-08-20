@@ -23,5 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 
-# vite-plus / vite cache
+# vite cache
 .vite
