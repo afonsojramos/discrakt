@@ -23,7 +23,7 @@ chrono = "0.4.45"
 webbrowser = "1.2.1"
 dirs = "6.0.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
-dark-light = "2.0"
+dark-light = "3.0"
 crossbeam-channel = "0.5"
 winit = "0.30"
 tracing = "0.1"
