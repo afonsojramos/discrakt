@@ -14,8 +14,6 @@ export default defineConfig({
     },
   },
   server: {
-    // For local UI development, point the API routes at a running Discrakt
-    // setup server: VITE_PROXY_TARGET=http://127.0.0.1:<port> pnpm dev
     proxy: process.env.VITE_PROXY_TARGET
       ? Object.fromEntries(
           ["/submit", "/submit-plex", "/plex-login", "/status"].map((p) => [
