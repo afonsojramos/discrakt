@@ -2,5 +2,5 @@
 # Bump this deliberately (and run `cargo clippy` locally) when adopting a new
 # Rust release, rather than letting CI's `stable` drift ahead of contributors.
 [toolchain]
-channel = "1.96.0"
+channel = "1.97.1"
 components = ["clippy", "rustfmt"]
