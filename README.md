@@ -221,6 +221,8 @@ nub run lint
 nub run format
 ```
 
+The UI components come from [shadcn/ui](https://ui.shadcn.com), whose CLI is deliberately not a dependency; run it on demand with `nubx shadcn@latest add <component>`.
+
 To build the Rust binary against a prebuilt `setup-ui/dist` without invoking nub, set `DISCRAKT_SKIP_UI_BUILD=1`.
 
 ## Thank You
