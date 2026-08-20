@@ -91,7 +91,7 @@ fn main() {
     }
 }
 
-/// Builds the embedded setup-ui frontend (vite-plus) into setup-ui/dist.
+/// Builds the embedded setup-ui frontend (vite) into setup-ui/dist.
 ///
 /// Set `DISCRAKT_SKIP_UI_BUILD=1` to skip this and reuse an existing dist/
 /// (e.g. in environments without Node/nub that ship a prebuilt bundle).
