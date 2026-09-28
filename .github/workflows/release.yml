@@ -9,7 +9,8 @@ env:
 
 jobs:
   publish-linux:
-    runs-on: ubuntu-latest
+    # Oldest available runner so the binaries' glibc floor stays low.
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
     env:
