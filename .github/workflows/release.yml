@@ -36,13 +36,10 @@ jobs:
           sudo apt update
           sudo apt install -y libgtk-3-dev libappindicator3-dev libxdo-dev desktop-file-utils
 
-      - name: Install cargo-deb (prebuilt)
-        uses: taiki-e/install-action@v2.87.1
-        with:
-          tool: cargo-deb
-
-      - name: Install cargo-generate-rpm
-        run: cargo install cargo-generate-rpm
+      # Built from source: the prebuilt cargo-deb binaries need a newer glibc
+      # than this runner has.
+      - name: Install cargo-deb and cargo-generate-rpm
+        run: cargo install cargo-deb cargo-generate-rpm
 
       - name: Build setup-ui
         shell: bash
