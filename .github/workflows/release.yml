@@ -34,7 +34,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt update
-          sudo apt install -y libgtk-3-dev libappindicator3-dev libxdo-dev desktop-file-utils
+          sudo apt install -y desktop-file-utils
 
       # Built from source: the prebuilt cargo-deb binaries need a newer glibc
       # than this runner has.
