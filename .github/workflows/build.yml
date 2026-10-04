@@ -39,6 +39,14 @@ jobs:
             target: aarch64-apple-darwin
             artifact: discrakt
             name: macos-arm64
+            architecture: arm64
+            minimum-macos: "11.0"
+          - os: macos-14
+            target: x86_64-apple-darwin
+            artifact: discrakt
+            name: macos-x86_64
+            architecture: x86_64
+            minimum-macos: "10.13"
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             artifact: discrakt
@@ -51,22 +59,35 @@ jobs:
       - name: Set up toolchain via mise (node, nub, rust)
         uses: jdx/mise-action@v4.3.0
 
+      - name: Add compile target
+        run: rustup target add ${{ matrix.target }}
+
       - name: Cache
         uses: Swatinem/rust-cache@v2
 
       - name: Build
         env:
           DISCRAKT_VERSION: 0.0.0-test
-        run: cargo build --release
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.minimum-macos }}
+        run: cargo build --release --target=${{ matrix.target }}
 
       - name: Verify binary version
         if: runner.os != 'Windows'
         shell: bash
-        run: test "$(target/release/discrakt --version)" = "discrakt 0.0.0-test"
+        env:
+          BINARY_PATH: target/${{ matrix.target }}/release/discrakt
+        run: test "$("$BINARY_PATH" --version)" = "discrakt 0.0.0-test"
+
+      - name: Verify macOS binary architecture
+        if: runner.os == 'macOS'
+        env:
+          BINARY_PATH: target/${{ matrix.target }}/release/discrakt
+          EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
+        run: test "$(lipo -archs "$BINARY_PATH")" = "$EXPECTED_ARCHITECTURE"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: discrakt-${{ matrix.name }}
-          path: target/release/${{ matrix.artifact }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact }}
           retention-days: 14

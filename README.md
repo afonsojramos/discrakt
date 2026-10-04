@@ -134,7 +134,12 @@ Supports both Apple Silicon and Intel Macs.
 
 #### DMG
 
-Download the universal DMG from the latest [release](https://github.com/afonsojramos/discrakt/releases) and drag the app to your Applications folder.
+Download the DMG for your Mac from the latest [release](https://github.com/afonsojramos/discrakt/releases):
+
+- **Apple Silicon (M1 or newer):** `Discrakt_<version>_arm64.dmg`
+- **Intel:** `Discrakt_<version>_x86_64.dmg`
+
+Open the DMG and drag the app to your Applications folder.
 
 ### Windows
 

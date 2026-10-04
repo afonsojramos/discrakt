@@ -223,10 +223,21 @@ jobs:
 
   publish-macos:
     runs-on: macos-14
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            architecture: arm64
+            label: Apple Silicon
+            minimum-macos: "11.0"
+          - target: x86_64-apple-darwin
+            architecture: x86_64
+            label: Intel
+            minimum-macos: "10.13"
     permissions:
       contents: write
     env:
-      MACOSX_DEPLOYMENT_TARGET: "10.13"
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.minimum-macos }}
       # Build the setup-ui in a dedicated step (below) so the per-target cargo
       # builds reuse one prebuilt dist instead of invoking nub from build.rs.
       DISCRAKT_SKIP_UI_BUILD: "1"
@@ -238,8 +249,8 @@ jobs:
       - name: Set up toolchain via mise (node, nub, rust)
         uses: jdx/mise-action@v4.3.0
 
-      - name: Add cross-compile targets
-        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Add compile target
+        run: rustup target add ${{ matrix.target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -259,33 +270,19 @@ jobs:
           mise exec -- nub run build
           test -f dist/index.html # fail loudly if the build produced no dist
 
-      - name: Build arm64 (Apple Silicon)
+      - name: Build ${{ matrix.label }} binary
         env:
           DISCRAKT_VERSION: ${{ steps.version.outputs.VERSION }}
-        run: cargo build --release --target=aarch64-apple-darwin
+        run: cargo build --release --target=${{ matrix.target }}
 
-      - name: Build x86_64 (Intel)
-        env:
-          DISCRAKT_VERSION: ${{ steps.version.outputs.VERSION }}
-        run: cargo build --release --target=x86_64-apple-darwin
-
-      - name: Create universal binary
-        run: |
-          mkdir -p target/release
-          lipo -create \
-            target/aarch64-apple-darwin/release/discrakt \
-            target/x86_64-apple-darwin/release/discrakt \
-            -output target/release/discrakt
-          chmod +x target/release/discrakt
-
-      - name: Verify universal binary
+      - name: Verify binary architecture and version
         env:
           EXPECTED_VERSION: ${{ steps.version.outputs.VERSION }}
+          EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
+          BINARY_PATH: target/${{ matrix.target }}/release/discrakt
         run: |
-          file target/release/discrakt
-          lipo -info target/release/discrakt
-          test "$(arch -arm64 target/release/discrakt --version)" = "discrakt $EXPECTED_VERSION"
-          test "$(arch -x86_64 target/release/discrakt --version)" = "discrakt $EXPECTED_VERSION"
+          test "$(lipo -archs "$BINARY_PATH")" = "$EXPECTED_ARCHITECTURE"
+          test "$(arch -"$EXPECTED_ARCHITECTURE" "$BINARY_PATH" --version)" = "discrakt $EXPECTED_VERSION"
 
       - name: Create app bundle structure
         run: |
@@ -295,7 +292,7 @@ jobs:
           mkdir -p "${APP_BUNDLE}/Contents/MacOS"
           mkdir -p "${APP_BUNDLE}/Contents/Resources"
 
-          cp target/release/discrakt "${APP_BUNDLE}/Contents/MacOS/discrakt"
+          cp target/${{ matrix.target }}/release/discrakt "${APP_BUNDLE}/Contents/MacOS/discrakt"
           cp assets/Discrakt.icns "${APP_BUNDLE}/Contents/Resources/Discrakt.icns"
 
       - name: Create Info.plist
@@ -331,7 +328,7 @@ jobs:
               <key>LSApplicationCategoryType</key>
               <string>public.app-category.utilities</string>
               <key>LSMinimumSystemVersion</key>
-              <string>10.13</string>
+              <string>${{ matrix.minimum-macos }}</string>
               <key>LSUIElement</key>
               <true/>
               <key>NSHighResolutionCapable</key>
@@ -413,7 +410,7 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
 
           create-dmg \
-            --volname "Discrakt ${VERSION}" \
+            --volname "Discrakt ${VERSION} (${{ matrix.label }})" \
             --volicon "assets/Discrakt.icns" \
             --window-pos 200 120 \
             --window-size 600 400 \
@@ -422,14 +419,14 @@ jobs:
             --hide-extension "Discrakt.app" \
             --app-drop-link 450 185 \
             --no-internet-enable \
-            "target/release/Discrakt_${VERSION}_universal.dmg" \
+            "target/release/Discrakt_${VERSION}_${{ matrix.architecture }}.dmg" \
             "target/release/Discrakt.app" || true
 
-          if [ ! -f "target/release/Discrakt_${VERSION}_universal.dmg" ]; then
-            hdiutil create -volname "Discrakt ${VERSION}" \
+          if [ ! -f "target/release/Discrakt_${VERSION}_${{ matrix.architecture }}.dmg" ]; then
+            hdiutil create -volname "Discrakt ${VERSION} (${{ matrix.label }})" \
               -srcfolder "target/release/Discrakt.app" \
               -ov -format UDZO \
-              "target/release/Discrakt_${VERSION}_universal.dmg"
+              "target/release/Discrakt_${VERSION}_${{ matrix.architecture }}.dmg"
           fi
 
       - name: Notarize DMG
@@ -439,7 +436,7 @@ jobs:
           APPLE_APP_PASSWORD: ${{ steps.secrets.outputs.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ steps.secrets.outputs.APPLE_TEAM_ID }}
         run: |
-          DMG_PATH="target/release/Discrakt_${{ steps.version.outputs.VERSION }}_universal.dmg"
+          DMG_PATH="target/release/Discrakt_${{ steps.version.outputs.VERSION }}_${{ matrix.architecture }}.dmg"
 
           xcrun notarytool submit "$DMG_PATH" \
             --apple-id "$APPLE_ID" \
@@ -450,53 +447,34 @@ jobs:
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler validate "$DMG_PATH"
 
-      - name: Sign Homebrew binaries
+      - name: Sign Homebrew binary
         if: steps.secrets.outputs.MACOS_SIGNING_IDENTITY != ''
         env:
           MACOS_SIGNING_IDENTITY: ${{ steps.secrets.outputs.MACOS_SIGNING_IDENTITY }}
         run: |
-          # Developer ID sign the per-arch binaries that go into the Homebrew
-          # tarballs. The DMG signs the universal binary inside the .app; these
-          # thin binaries are separate files. Not notarized: a bare Mach-O can't
-          # be stapled, and Homebrew formula installs don't quarantine, so the
-          # signature is for attribution and future-proofing only.
-          for bin in \
-            target/aarch64-apple-darwin/release/discrakt \
-            target/x86_64-apple-darwin/release/discrakt; do
-            codesign --force --options runtime \
-              --sign "$MACOS_SIGNING_IDENTITY" \
-              --timestamp \
-              "$bin"
-            codesign --verify --strict --verbose=2 "$bin"
-          done
+          BINARY_PATH="target/${{ matrix.target }}/release/discrakt"
+          codesign --force --options runtime \
+            --sign "$MACOS_SIGNING_IDENTITY" \
+            --timestamp \
+            "$BINARY_PATH"
+          codesign --verify --strict --verbose=2 "$BINARY_PATH"
 
-      - name: Create Homebrew tarballs
+      - name: Create Homebrew tarball
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
 
-          # Create arm64 tarball
-          mkdir -p target/homebrew/arm64
-          cp target/aarch64-apple-darwin/release/discrakt target/homebrew/arm64/
-          tar -czf "target/homebrew/discrakt-${VERSION}-aarch64-apple-darwin.tar.gz" -C target/homebrew/arm64 discrakt
-
-          # Create x86_64 tarball
-          mkdir -p target/homebrew/x86_64
-          cp target/x86_64-apple-darwin/release/discrakt target/homebrew/x86_64/
-          tar -czf "target/homebrew/discrakt-${VERSION}-x86_64-apple-darwin.tar.gz" -C target/homebrew/x86_64 discrakt
-
-          # Generate SHA256 checksums for Homebrew formula
-          echo "SHA256 checksums for Homebrew formula:"
-          shasum -a 256 target/homebrew/discrakt-${VERSION}-aarch64-apple-darwin.tar.gz
-          shasum -a 256 target/homebrew/discrakt-${VERSION}-x86_64-apple-darwin.tar.gz
+          mkdir -p target/homebrew/${{ matrix.architecture }}
+          cp target/${{ matrix.target }}/release/discrakt target/homebrew/${{ matrix.architecture }}/
+          tar -czf "target/homebrew/discrakt-${VERSION}-${{ matrix.target }}.tar.gz" -C target/homebrew/${{ matrix.architecture }} discrakt
+          shasum -a 256 target/homebrew/discrakt-${VERSION}-${{ matrix.target }}.tar.gz
 
       - name: Upload binaries
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ github.ref_name }}" \
-            "target/release/Discrakt_${{ steps.version.outputs.VERSION }}_universal.dmg" \
-            "target/homebrew/discrakt-${{ steps.version.outputs.VERSION }}-aarch64-apple-darwin.tar.gz" \
-            "target/homebrew/discrakt-${{ steps.version.outputs.VERSION }}-x86_64-apple-darwin.tar.gz" \
+            "target/release/Discrakt_${{ steps.version.outputs.VERSION }}_${{ matrix.architecture }}.dmg" \
+            "target/homebrew/discrakt-${{ steps.version.outputs.VERSION }}-${{ matrix.target }}.tar.gz" \
             --clobber
 
   update-winget:
