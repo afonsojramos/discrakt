@@ -59,6 +59,11 @@ jobs:
           DISCRAKT_VERSION: 0.0.0-test
         run: cargo build --release
 
+      - name: Verify binary version
+        if: runner.os != 'Windows'
+        shell: bash
+        run: test "$(target/release/discrakt --version)" = "discrakt 0.0.0-test"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
