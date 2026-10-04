@@ -324,12 +324,30 @@ jobs:
           </plist>
           EOF
 
-      - name: Import code signing certificate
-        if: env.BUILD_CERTIFICATE_BASE64 != ''
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Load signing secrets from 1Password
+        id: secrets
+        uses: 1password/load-secrets-action@v5.0.1
+        with:
+          export-env: false
         env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
-          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          APPLE_APP_PASSWORD: op://discrakt-prod/APPLE_APP_PASSWORD/password
+          APPLE_ID: op://discrakt-prod/APPLE_ID/password
+          APPLE_TEAM_ID: op://discrakt-prod/APPLE_TEAM_ID/password
+          MACOS_CERTIFICATE_BASE64: op://discrakt-prod/MACOS_CERTIFICATE_BASE64/password
+          MACOS_CERTIFICATE_PASSWORD: op://discrakt-prod/MACOS_CERTIFICATE_PASSWORD/password
+          MACOS_KEYCHAIN_PASSWORD: op://discrakt-prod/MACOS_KEYCHAIN_PASSWORD/password
+          MACOS_SIGNING_IDENTITY: op://discrakt-prod/MACOS_SIGNING_IDENTITY/password
+
+      - name: Import code signing certificate
+        if: steps.secrets.outputs.MACOS_CERTIFICATE_BASE64 != ''
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ steps.secrets.outputs.MACOS_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ steps.secrets.outputs.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ steps.secrets.outputs.MACOS_KEYCHAIN_PASSWORD }}
         run: |
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
@@ -345,9 +363,9 @@ jobs:
           security list-keychain -d user -s $KEYCHAIN_PATH
 
       - name: Sign app bundle
-        if: env.MACOS_SIGNING_IDENTITY != ''
+        if: steps.secrets.outputs.MACOS_SIGNING_IDENTITY != ''
         env:
-          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          MACOS_SIGNING_IDENTITY: ${{ steps.secrets.outputs.MACOS_SIGNING_IDENTITY }}
         run: |
           codesign --force --options runtime \
             --sign "$MACOS_SIGNING_IDENTITY" \
@@ -362,14 +380,11 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "target/release/Discrakt.app"
 
       - name: Ad-hoc sign (if no certificate)
-        if: env.MACOS_SIGNING_IDENTITY == ''
+        if: steps.secrets.outputs.MACOS_SIGNING_IDENTITY == ''
         env:
-          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          MACOS_SIGNING_IDENTITY: ${{ steps.secrets.outputs.MACOS_SIGNING_IDENTITY }}
         run: |
           codesign --force --deep --sign - "target/release/Discrakt.app"
-
-      - name: Install create-dmg
-        run: brew install create-dmg
 
       - name: Create DMG
         run: |
@@ -396,11 +411,11 @@ jobs:
           fi
 
       - name: Notarize DMG
-        if: env.APPLE_ID != '' && env.APPLE_APP_PASSWORD != '' && env.APPLE_TEAM_ID != ''
+        if: steps.secrets.outputs.APPLE_ID != '' && steps.secrets.outputs.APPLE_APP_PASSWORD != '' && steps.secrets.outputs.APPLE_TEAM_ID != ''
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ steps.secrets.outputs.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ steps.secrets.outputs.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ steps.secrets.outputs.APPLE_TEAM_ID }}
         run: |
           DMG_PATH="target/release/Discrakt_${{ steps.version.outputs.VERSION }}_universal.dmg"
 
@@ -414,9 +429,9 @@ jobs:
           xcrun stapler validate "$DMG_PATH"
 
       - name: Sign Homebrew binaries
-        if: env.MACOS_SIGNING_IDENTITY != ''
+        if: steps.secrets.outputs.MACOS_SIGNING_IDENTITY != ''
         env:
-          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          MACOS_SIGNING_IDENTITY: ${{ steps.secrets.outputs.MACOS_SIGNING_IDENTITY }}
         run: |
           # Developer ID sign the per-arch binaries that go into the Homebrew
           # tarballs. The DMG signs the universal binary inside the .app; these
@@ -469,12 +484,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Load Winget token from 1Password
+        id: secrets
+        uses: 1password/load-secrets-action@v5.0.1
+        with:
+          export-env: false
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          WINGET_TOKEN: op://discrakt-prod/WINGET_TOKEN/password
+
       - name: Update Winget package
         uses: vedantmgoyal9/winget-releaser@a8fff44b123f115ce4c21543edf8b677376fc7e0 # main
         with:
           identifier: afonsojramos.discrakt
           installers-regex: '\.msi$'
-          token: ${{ secrets.WINGET_TOKEN }}
+          token: ${{ steps.secrets.outputs.WINGET_TOKEN }}
 
   update-homebrew:
     needs: publish-macos
@@ -490,9 +514,18 @@ jobs:
           VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Load Homebrew token from 1Password
+        id: secrets
+        uses: 1password/load-secrets-action@v5.0.1
+        with:
+          export-env: false
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          HOMEBREW_TAP_TOKEN: op://discrakt-prod/HOMEBREW_TAP_TOKEN/password
+
       - name: Trigger Homebrew formula update
         env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ steps.secrets.outputs.HOMEBREW_TAP_TOKEN }}
           VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
           if [ -n "$HOMEBREW_TAP_TOKEN" ]; then
