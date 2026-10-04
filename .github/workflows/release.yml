@@ -49,9 +49,6 @@ jobs:
           mise exec -- nub run build
           test -f dist/index.html # fail loudly if the build produced no dist
 
-      - name: Build amd64
-        run: cargo build --release
-
       - name: Extract version
         id: version
         run: |
@@ -59,14 +56,31 @@ jobs:
           VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Build amd64
+        env:
+          DISCRAKT_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: cargo build --release
+
+      - name: Verify amd64 binary version
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: test "$(target/release/discrakt --version)" = "discrakt $EXPECTED_VERSION"
+
       - name: Build amd64 .deb package
         run: cargo deb --no-build --deb-version=${{ steps.version.outputs.VERSION }}
 
       - name: Install compiler tools (as we're cross-compiling)
-        run: sudo apt install -y gcc-aarch64-linux-gnu
+        run: sudo apt install -y gcc-aarch64-linux-gnu qemu-user
 
       - name: Build arm64
+        env:
+          DISCRAKT_VERSION: ${{ steps.version.outputs.VERSION }}
         run: cargo build --release --target=aarch64-unknown-linux-gnu
+
+      - name: Verify arm64 binary version
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: test "$(qemu-aarch64 -L /usr/aarch64-linux-gnu target/aarch64-unknown-linux-gnu/release/discrakt --version)" = "discrakt $EXPECTED_VERSION"
 
       - name: Build arm64 .deb package
         run: cargo deb --no-build --target=aarch64-unknown-linux-gnu --deb-version=${{ steps.version.outputs.VERSION }}
@@ -246,9 +260,13 @@ jobs:
           test -f dist/index.html # fail loudly if the build produced no dist
 
       - name: Build arm64 (Apple Silicon)
+        env:
+          DISCRAKT_VERSION: ${{ steps.version.outputs.VERSION }}
         run: cargo build --release --target=aarch64-apple-darwin
 
       - name: Build x86_64 (Intel)
+        env:
+          DISCRAKT_VERSION: ${{ steps.version.outputs.VERSION }}
         run: cargo build --release --target=x86_64-apple-darwin
 
       - name: Create universal binary
@@ -261,9 +279,13 @@ jobs:
           chmod +x target/release/discrakt
 
       - name: Verify universal binary
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
           file target/release/discrakt
           lipo -info target/release/discrakt
+          test "$(arch -arm64 target/release/discrakt --version)" = "discrakt $EXPECTED_VERSION"
+          test "$(arch -x86_64 target/release/discrakt --version)" = "discrakt $EXPECTED_VERSION"
 
       - name: Create app bundle structure
         run: |
