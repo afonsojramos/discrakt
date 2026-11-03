@@ -3,22 +3,28 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      # Check for updates to GitHub Actions every weekday
       interval: "weekly"
+    groups:
+      github-actions:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
-      # Check for updates managed by Composer once a week
       interval: "weekly"
+    groups:
+      cargo:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/setup-ui"
     schedule:
       interval: "weekly"
+    groups:
+      setup-ui:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "rust-toolchain"
     directory: "/"
     schedule:
-      # Check for Rust toolchain updates once a week
       interval: "weekly"
