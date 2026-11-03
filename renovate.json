@@ -1,0 +1,38 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests", ":dependencyDashboard"],
+  "dependencyDashboardApproval": true,
+  "vulnerabilityAlerts": {
+    "dependencyDashboardApproval": true
+  },
+  "minimumReleaseAge": "1 day",
+  "packageRules": [
+    {
+      "groupName": "react",
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"]
+    },
+    {
+      "groupName": "oxc",
+      "matchPackageNames": ["oxlint", "oxfmt"]
+    },
+    {
+      "groupName": "github actions",
+      "matchManagers": ["github-actions"]
+    },
+    {
+      "groupName": "repository toolchain",
+      "matchManagers": ["mise", "custom.regex"]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Rust version pinned in rust-toolchain.toml, which mise and CI both read.",
+      "managerFilePatterns": ["/^rust-toolchain\\.toml$/"],
+      "matchStrings": ["channel\\s*=\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
+      "depNameTemplate": "rust-lang/rust",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "semver"
+    }
+  ]
+}
