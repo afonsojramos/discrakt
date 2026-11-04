@@ -21,18 +21,7 @@
     },
     {
       "groupName": "repository toolchain",
-      "matchManagers": ["mise", "custom.regex"]
-    }
-  ],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Rust version pinned in rust-toolchain.toml, which mise and CI both read.",
-      "managerFilePatterns": ["/^rust-toolchain\\.toml$/"],
-      "matchStrings": ["channel\\s*=\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
-      "depNameTemplate": "rust-lang/rust",
-      "datasourceTemplate": "github-tags",
-      "versioningTemplate": "semver"
+      "matchManagers": ["mise", "rust-toolchain"]
     }
   ]
 }
